@@ -67,6 +67,9 @@
     .thumb .keys-w rect.on, .thumb .keys-b rect.on { fill: var(--accent); stroke: var(--accent); }
     .thumb .wave { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; }
     .thumb .spray { fill: var(--accent); fill-opacity: 0.12; stroke: none; }
+    .thumb .quad { fill: none; stroke: var(--muted); stroke-width: 1.2; }
+    .thumb .quad.on { fill: var(--accent); stroke: var(--accent); }
+    .thumb .hub { fill: var(--card); stroke: var(--fg); stroke-width: 1.2; }
     .thumb .chord-shape { fill: var(--accent); fill-opacity: 0.12; stroke-width: 1.2; opacity: 0.9; }
     .label {
       padding: 10px 14px 14px;
@@ -245,6 +248,22 @@
         <div class="label">
           <strong>Granular</strong>
           <span>Record a sound and play it as clouds of grains</span>
+        </div>
+      </a>
+
+      <a class="item" href="memory/">
+        <div class="thumb">
+          <svg viewBox="0 0 100 100" aria-hidden="true">
+            <path class="quad" d="M47 10 A40 40 0 0 0 10 47 L47 47 Z"/>
+            <path class="quad on" d="M53 10 A40 40 0 0 1 90 47 L53 47 Z"/>
+            <path class="quad" d="M90 53 A40 40 0 0 1 53 90 L53 53 Z"/>
+            <path class="quad" d="M47 90 A40 40 0 0 1 10 53 L47 53 Z"/>
+            <circle class="hub" cx="50" cy="50" r="15"/>
+          </svg>
+        </div>
+        <div class="label">
+          <strong>Memory</strong>
+          <span>Repeat the sequence of four coloured notes</span>
         </div>
       </a>
 

@@ -58,7 +58,7 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
 
   await t.test('landing page lists every app and uses the shared theme', () => withPage('index.html', async (page) => {
     const cards = await page.eval(`[...document.querySelectorAll('a.item')].map((a) => a.getAttribute('href'))`);
-    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/', 'granular/']);
+    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/', 'granular/', 'memory/']);
     const accent = await page.eval(`getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()`);
     assert.match(accent, /^#[0-9a-f]{6}$/i);
   }));
@@ -375,8 +375,124 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
     assert.equal(r.reverseReset, '0');
   }));
 
+  await t.test('memory: sequence plays and grows, keys and taps repeat it, win, mistakes, sound screen', () => withPage('memory/index.html', async (page) => {
+    const r = await page.eval(`(async () => {
+      const out = {}, M = window.__memory;
+      const $ = (id) => document.getElementById(id);
+      const pad = (i) => document.querySelector('.pad[data-pad="' + i + '"]');
+      const tap = (i) => { __t.pointer(pad(i), 'pointerdown', 1); window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1 })); };
+      const KEYS = ['KeyQ', 'KeyW', 'KeyS', 'KeyA'];
+      const until = async (fn, ms) => { const end = Date.now() + (ms || 6000); while (!fn()) { if (Date.now() > end) return false; await __t.wait(15); } return true; };
+      const knob = (label) => [...document.querySelectorAll('.knob')].find((k) => k.getAttribute('aria-label') === label);
+      const keyOn = (el, key) => el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+      const select = (label) => [...document.querySelectorAll('.field')].find((f) => f.querySelector('span').textContent === label).querySelector('select');
+      const choose = (label, v) => { const s = select(label); s.value = v; s.dispatchEvent(new Event('change')); };
+      const tags = () => [...document.querySelectorAll('.pad .tag')].map((t) => t.textContent).join(',');
+
+      out.pads = document.querySelectorAll('.pad').length;
+      out.tags = tags();
+      out.state = document.body.dataset.state;
+      out.soundHidden = $('sound').hidden;
+
+      // Free play outside a game lights the pad while held.
+      __t.pointer(pad(1), 'pointerdown', 3);
+      out.freeLit = pad(1).classList.contains('lit');
+      window.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3 }));
+      out.freeOff = !pad(1).classList.contains('lit');
+
+      // Quick game: fastest speed, shortest length.
+      keyOn(knob('Speed'), 'End');
+      keyOn(knob('Length'), 'Home');
+      out.of = $('of').textContent;
+
+      const seen = [];
+      new MutationObserver((ms) => {
+        for (const m of ms) if (m.target.classList.contains('lit') && document.body.dataset.state === 'demo') seen.push(+m.target.dataset.pad);
+      }).observe($('board'), { subtree: true, attributes: true, attributeFilter: ['class'] });
+
+      $('start').click();
+      out.stopLabel = $('start').textContent;
+      out.input1 = await until(() => M.state === 'input');
+      out.round1 = { seq: M.sequence, seen: seen.slice(), count: $('count').textContent, status: $('status').textContent };
+      tap(M.sequence[0]);
+      out.input2 = await until(() => M.state === 'input' && M.sequence.length === 2);
+      out.round2 = { prefixKept: M.sequence[0] === out.round1.seq[0], seen: seen.slice(1), seq: M.sequence };
+      for (const p of M.sequence) __t.press(KEYS[p]);
+      out.won = await until(() => M.state === 'won');
+      out.wonStatus = $('status').textContent;
+      out.best = $('best').textContent;
+
+      // A wrong pad ends the game.
+      $('start').click();
+      await until(() => M.state === 'input');
+      tap((M.sequence[0] + 1) % 4);
+      out.lost = await until(() => M.state === 'lost');
+      out.lostStatus = $('status').textContent;
+
+      // With "Try again" the same sequence replays.
+      choose('On a mistake', 'retry');
+      $('start').click();
+      await until(() => M.state === 'input');
+      const first = M.sequence[0];
+      tap((first + 1) % 4);
+      out.replayed = await until(() => M.state === 'demo') && await until(() => M.state === 'input');
+      out.retrySeq = M.sequence.length === 1 && M.sequence[0] === first;
+      __t.press('Escape');
+      out.stopped = [M.state, $('start').textContent, document.querySelectorAll('.pad.lit').length];
+
+      // Sound screen: chords, root, octave and single pad notes.
+      $('show-sound').click();
+      out.soundShown = [$('sound').hidden, $('show-sound').getAttribute('aria-pressed')];
+      out.groups = [...document.querySelectorAll('#sound .group-title')].map((g) => g.textContent);
+      choose('Chord', 'm7');
+      out.m7 = tags();
+      choose('Root', '2');
+      keyOn(knob('Octave'), 'ArrowDown');
+      out.d3 = tags();
+      choose('Pad 4 (yellow)', '84');
+      out.custom = [select('Chord').value, tags()];
+      const cutoff = knob('Cutoff');
+      keyOn(cutoff, 'ArrowUp');
+      out.cutoffChanged = cutoff.getAttribute('aria-valuenow') !== '2600';
+      $('defaults').click();
+      out.reset = [select('Chord').value, tags(), cutoff.getAttribute('aria-valuenow'), $('of').textContent];
+      return out;
+    })()`);
+    assert.equal(r.pads, 4);
+    assert.equal(r.tags, 'C4Q,E4W,G4S,B4A', 'C major 7th by default');
+    assert.equal(r.state, 'idle');
+    assert.equal(r.soundHidden, true);
+    assert.equal(r.freeLit, true);
+    assert.equal(r.freeOff, true);
+    assert.equal(r.of, 'of 2');
+    assert.equal(r.stopLabel, 'Stop');
+    assert.equal(r.input1, true, 'the first round reaches the player');
+    assert.equal(r.round1.seq.length, 1);
+    assert.deepEqual(r.round1.seen, r.round1.seq, 'the pads light in sequence order');
+    assert.equal(r.round1.count, '1');
+    assert.equal(r.round1.status, 'Your turn');
+    assert.equal(r.input2, true, 'a correct repeat adds a step');
+    assert.equal(r.round2.prefixKept, true);
+    assert.deepEqual(r.round2.seen, r.round2.seq);
+    assert.equal(r.won, true, 'repeating the full length wins');
+    assert.equal(r.wonStatus, 'You win! · 2 steps');
+    assert.equal(r.best, 'Best 2');
+    assert.equal(r.lost, true);
+    assert.equal(r.lostStatus, 'Game over · 0 steps');
+    assert.equal(r.replayed, true);
+    assert.equal(r.retrySeq, true);
+    assert.deepEqual(r.stopped, ['idle', 'Start', 0]);
+    assert.deepEqual(r.soundShown, [false, 'true']);
+    assert.deepEqual(r.groups, ['Notes', 'Oscillator 1', 'Oscillator 2', 'Mixer', 'Filter', 'Filter envelope', 'Amp envelope', 'Modulation (LFO)', 'Output']);
+    assert.equal(r.m7, 'C4Q,D♯4W,G4S,A♯4A');
+    assert.equal(r.d3, 'D3Q,F3W,A3S,C4A');
+    assert.deepEqual(r.custom, ['custom', 'D3Q,F3W,A3S,C6A']);
+    assert.equal(r.cutoffChanged, true);
+    assert.deepEqual(r.reset, ['maj7', 'C4Q,E4W,G4S,B4A', '2600', 'of 12']);
+  }));
+
   await t.test('no page scrolls sideways at phone width', async () => {
-    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html', 'granular/index.html']) {
+    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html', 'granular/index.html', 'memory/index.html']) {
       const page = await browser.newPage();
       try {
         await page.setViewport(390, 844);

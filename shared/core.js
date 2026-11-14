@@ -324,6 +324,80 @@
   // Highest lowest-C octave so the top key stays at or below C8.
   const maxOctave = (span) => 8 - span;
 
+  // ---------- subtractive synth voice (Synth, Memory) ----------
+  // The knob groups for one voice of nmlq.audio.createSynth. Returns fresh
+  // copies; `overrides` ({ key: value }) changes the defaults for an app.
+  const fmtRate = (v) => (v < 10 ? v.toFixed(2) : v.toFixed(1)) + ' Hz';
+  function synthVoiceGroups(overrides) {
+    const groups = [
+      {
+        title: 'Oscillator 1', params: [
+          { key: 'osc1Wave', label: 'Wave', options: WAVES, value: 'sawtooth' },
+          { key: 'osc1Oct', label: 'Octave', min: -2, max: 2, step: 1, value: 0, format: fmt.signed },
+          { key: 'osc1Level', label: 'Level', min: 0, max: 100, step: 1, value: 70, format: fmt.pct },
+        ],
+      },
+      {
+        title: 'Oscillator 2', params: [
+          { key: 'osc2Wave', label: 'Wave', options: WAVES, value: 'square' },
+          { key: 'osc2Oct', label: 'Octave', min: -2, max: 2, step: 1, value: 0, format: fmt.signed },
+          { key: 'osc2Semi', label: 'Semitones', min: -12, max: 12, step: 1, value: 0, format: fmt.signed },
+          { key: 'osc2Detune', label: 'Detune', min: -50, max: 50, step: 1, value: 7, format: (v) => fmt.signed(v) + '¢' },
+          { key: 'osc2Level', label: 'Level', min: 0, max: 100, step: 1, value: 40, format: fmt.pct },
+        ],
+      },
+      {
+        title: 'Mixer', params: [
+          { key: 'subLevel', label: 'Sub osc', min: 0, max: 100, step: 1, value: 0, format: fmt.pct },
+          { key: 'noiseLevel', label: 'Noise', min: 0, max: 100, step: 1, value: 0, format: fmt.pct },
+        ],
+      },
+      {
+        title: 'Filter', params: [
+          { key: 'filterType', label: 'Type', value: 'lowpass', options: FILTER_TYPES },
+          { key: 'cutoff', label: 'Cutoff', min: 30, max: 18000, log: true, value: 1800, format: fmt.hz },
+          { key: 'resonance', label: 'Resonance', min: 0, max: 100, step: 1, value: 25, format: fmt.pct },
+          { key: 'filterEnvAmt', label: 'Env amount', min: -100, max: 100, step: 1, value: 40, format: fmt.signedPct },
+          { key: 'keyTrack', label: 'Key track', min: 0, max: 100, step: 1, value: 50, format: fmt.pct },
+        ],
+      },
+      {
+        title: 'Filter envelope', params: [
+          { key: 'fAttack', label: 'Attack', min: 1, max: 5000, log: true, value: 5, format: fmt.ms },
+          { key: 'fDecay', label: 'Decay', min: 5, max: 5000, log: true, value: 400, format: fmt.ms },
+          { key: 'fSustain', label: 'Sustain', min: 0, max: 100, step: 1, value: 30, format: fmt.pct },
+          { key: 'fRelease', label: 'Release', min: 5, max: 8000, log: true, value: 400, format: fmt.ms },
+        ],
+      },
+      {
+        title: 'Amp envelope', params: [
+          { key: 'attack', label: 'Attack', min: 1, max: 5000, log: true, value: 4, format: fmt.ms },
+          { key: 'decay', label: 'Decay', min: 5, max: 5000, log: true, value: 300, format: fmt.ms },
+          { key: 'sustain', label: 'Sustain', min: 0, max: 100, step: 1, value: 75, format: fmt.pct },
+          { key: 'release', label: 'Release', min: 5, max: 8000, log: true, value: 300, format: fmt.ms },
+        ],
+      },
+      {
+        title: 'Modulation (LFO)', params: [
+          { key: 'lfoWave', label: 'Wave', options: WAVES, value: 'sine' },
+          { key: 'lfoRate', label: 'Rate', min: 0.1, max: 20, log: true, value: 5, format: fmtRate },
+          { key: 'vibrato', label: 'Vibrato', min: 0, max: 100, step: 1, value: 0, format: (v) => v + '¢' },
+          { key: 'lfoFilter', label: 'Filter', min: 0, max: 100, step: 1, value: 0, format: fmt.pct },
+          { key: 'tremolo', label: 'Tremolo', min: 0, max: 100, step: 1, value: 0, format: fmt.pct },
+        ],
+      },
+    ];
+    if (overrides) {
+      for (const g of groups) for (const d of g.params) if (d.key in overrides) d.value = overrides[d.key];
+    }
+    return groups;
+  }
+  // Voice settings that createSynth's configure() applies to sounding voices,
+  // and the ones its applyGlobal() handles (the rest are read per note).
+  const SYNTH_VOICE_KEYS = ['osc1Wave', 'osc1Oct', 'osc1Level', 'osc2Wave', 'osc2Oct', 'osc2Semi', 'osc2Detune', 'osc2Level',
+    'subLevel', 'noiseLevel', 'filterType', 'cutoff', 'resonance', 'keyTrack'];
+  const SYNTH_GLOBAL_KEYS = ['lfoWave', 'lfoRate', 'vibrato', 'lfoFilter', 'tremolo'];
+
   // ---------- input ----------
 
   // True when keyboard shortcuts should leave the event alone.
@@ -342,5 +416,6 @@
     FILTER_TYPES, filterQ,
     GRAIN_SHAPES, grainWindow, computePeaks, peakOf, trimBounds, normalize, encodeWav,
     KEYMAP, KEY_LABELS, BLACK_KEYS, maxOctave,
+    fmtRate, synthVoiceGroups, SYNTH_VOICE_KEYS, SYNTH_GLOBAL_KEYS,
   };
 });

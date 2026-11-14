@@ -50,7 +50,7 @@ plus white noise, cross-faded by `noise` mix, each with its own decay
 envelope → filter (LP/HP/BP, cutoff, Q) → optional drive (tanh waveshaper) →
 optional stereo pan → master. All drums are presets of this one generator.
 
-**Subtractive voice (Synth)** — osc 1 + osc 2 + sine sub (octave below osc
+**Subtractive voice (Synth, Memory)** — `N.audio.createSynth` in `shared/audio.js`: osc 1 + osc 2 + sine sub (octave below osc
 1) + noise → filter stage A → filter stage B → amp → bus. Filter types:
 low-pass 12 dB, low-pass 24 dB (stage B also low-pass), high-pass,
 band-pass, notch (stage B is an all-pass otherwise). Separate ADSR for

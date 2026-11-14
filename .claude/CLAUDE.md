@@ -12,7 +12,8 @@ index.html            landing page: a grid of cards, one per app
 README.md             user-facing description of every app
 shared/core.js        pure helpers (music maths, formatters, params, storage, envelopes, knob maths,
                       filter Q, grain windows, sample peaks/trim/normalise, WAV encoding, key map)
-shared/audio.js       Web Audio blocks (context, iOS unlock, reverb/echo, pluck voices, ADSR)
+shared/audio.js       Web Audio blocks (context, iOS unlock, reverb/echo, pluck voices, subtractive
+                      synth voices, ADSR)
 shared/ui.js          DOM components (knob, knob groups with on/off switches, slider panel,
                       collapsible panel, piano keyboard, bend/mod strips, oscilloscope)
 shared/nmlq.css       theme tokens, shared control styles, keyboard-instrument layout
@@ -26,7 +27,7 @@ favicon.ico           site icon (shared/favicon.svg for modern browsers)
 .claude/              this guide and the reference docs below
 ```
 
-Current apps: `graph/`, `fifths/`, `drummer/`, `synth/`, `granular/`.
+Current apps: `graph/`, `fifths/`, `drummer/`, `synth/`, `granular/`, `memory/`.
 
 ## Reference docs (read before changing or adding an app)
 

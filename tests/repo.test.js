@@ -22,7 +22,7 @@ const APPS = fs.readdirSync(ROOT, { withFileTypes: true })
 const SHARED_SCRIPTS = ['core.js', 'audio.js', 'ui.js'];
 
 test('the expected apps exist', () => {
-  for (const app of ['drummer', 'fifths', 'graph', 'synth']) assert.ok(APPS.includes(app), app);
+  for (const app of ['drummer', 'fifths', 'graph', 'granular', 'memory', 'synth']) assert.ok(APPS.includes(app), app);
 });
 
 test('shared library files exist and parse', () => {
