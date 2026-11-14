@@ -78,6 +78,9 @@
       transition: transform 0.6s ease;
     }
     .item:hover .thumb svg { transform: rotate(22.5deg); }
+    .item:hover .thumb svg.no-spin { transform: scale(1.06); }
+    .thumb .cells rect { fill: none; stroke: var(--muted); stroke-width: 0.9; }
+    .thumb .cells rect.on { fill: var(--accent); stroke: var(--accent); }
     .thumb .edges { stroke: var(--accent); stroke-width: 0.8; opacity: 0.55; fill: none; }
     .thumb .nodes { fill: var(--card); stroke: var(--fg); stroke-width: 1.2; }
     .thumb .nodes.small { stroke: var(--muted); }
@@ -92,7 +95,7 @@
 
     @media (prefers-reduced-motion: reduce) {
       .item, .thumb svg { transition: none; }
-      .item:hover .thumb svg { transform: none; }
+      .item:hover .thumb svg, .item:hover .thumb svg.no-spin { transform: none; }
     }
   </style>
 </head>
@@ -165,6 +168,51 @@
         <div class="label">
           <strong>Fifths</strong>
           <span>Play chords round the circle of fifths</span>
+        </div>
+      </a>
+
+      <a class="item" href="drummer/">
+        <div class="thumb">
+          <svg viewBox="0 0 100 100" aria-hidden="true" class="no-spin">
+            <g class="cells">
+              <rect class="on" x="4.1" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="" x="15.8" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="" x="27.3" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="" x="38.9" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="on" x="52.0" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="" x="63.7" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="" x="75.2" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="" x="86.8" y="28.1" width="9" height="9" rx="2"/>
+              <rect class="" x="4.1" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="" x="15.8" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="" x="27.3" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="" x="38.9" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="on" x="52.0" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="" x="63.7" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="" x="75.2" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="" x="86.8" y="39.7" width="9" height="9" rx="2"/>
+              <rect class="on" x="4.1" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="" x="15.8" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="on" x="27.3" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="" x="38.9" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="on" x="52.0" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="" x="63.7" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="on" x="75.2" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="" x="86.8" y="51.3" width="9" height="9" rx="2"/>
+              <rect class="" x="4.1" y="62.9" width="9" height="9" rx="2"/>
+              <rect class="" x="15.8" y="62.9" width="9" height="9" rx="2"/>
+              <rect class="" x="27.3" y="62.9" width="9" height="9" rx="2"/>
+              <rect class="" x="38.9" y="62.9" width="9" height="9" rx="2"/>
+              <rect class="" x="52.0" y="62.9" width="9" height="9" rx="2"/>
+              <rect class="" x="63.7" y="62.9" width="9" height="9" rx="2"/>
+              <rect class="" x="75.2" y="62.9" width="9" height="9" rx="2"/>
+              <rect class="on" x="86.8" y="62.9" width="9" height="9" rx="2"/>
+            </g>
+          </svg>
+        </div>
+        <div class="label">
+          <strong>Drummer</strong>
+          <span>A 16-step drum sequencer</span>
         </div>
       </a>
 

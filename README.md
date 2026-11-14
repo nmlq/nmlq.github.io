@@ -7,9 +7,37 @@ A collection of small interactive musical toys. The landing page
 | --- | --- |
 | Graph | `graph/` |
 | Fifths | `fifths/` |
+| Drummer | `drummer/` |
 
 To add an item, create a folder with its own `index.html`, then copy one
 `<a class="item">` block in the root `index.html` and point it at the folder.
+
+## Drummer
+
+A 16-step drum sequencer. Each row is one drum with its own 16 steps; click a
+step (or drag across steps) to turn it on or off. **Play** or the space bar
+starts and stops; tempo and shuffle are dials (drag up/down, scroll, or use
+the arrow keys; double-click resets). Shuffle delays every second 16th note.
+
+Every drum comes from the same sound generator, so a kick and a hi-hat differ
+only in their settings:
+
+| Group | Settings |
+| --- | --- |
+| Oscillator | Wave, pitch, pitch drop (semitones) and drop time |
+| Noise | Noise mix (oscillator ↔ white noise) and noise decay |
+| Envelope | Attack and decay |
+| Filter | Low-, high- or band-pass, cutoff, resonance |
+| Output | Drive, level, pan |
+
+The default kit has four rows: bass drum, snare, hi-hat and tom. **+ Add
+drum** adds a row from a preset (including open hat, high tom, rimshot, clap,
+cowbell, or a blank drum); **×** removes a row; **M** / **S** mute and solo.
+Select a row to edit its sound below the grid. The pattern, sounds and tempo
+are saved in the browser; **Reset kit** restores the defaults.
+
+Files: `drummer/index.html` (page and styles) and `drummer/drummer.js` (drum
+generator, sequencer, knobs, editor).
 
 ## Fifths
 
