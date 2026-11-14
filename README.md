@@ -13,6 +13,7 @@ landing page (`index.html`) is a grid of cards, one per app.
 | [Fifths](fifths/) | `fifths/` | A playable circle of fifths: 12 major chords round the outside, their relative minors inside. Tap, slide or use the keyboard to play chords, or let it auto-play progressions and arpeggios. |
 | [Drummer](drummer/) | `drummer/` | A 16-step drum sequencer. Every drum (kick, snare, hats, toms, clap, …) is a preset of one sound generator you can edit. |
 | [Synth](synth/) | `synth/` | A basic subtractive synthesizer with a 3–5 octave keyboard you play by touch (multi-touch) or with the computer keyboard; mono or poly, with filter, ADSR envelopes, LFO and portamento. |
+| [Granular](granular/) | `granular/` | A granular synthesizer: record a sound in the browser (or load a file), keep up to four in memory, and play it from a 3–5 octave keyboard as clouds of tiny grains, with a live display of the waveform and every grain. |
 
 All apps work with mouse, pen, touch and keyboard, follow the system's light
 or dark mode, and remember their settings in the browser (each has a
@@ -46,14 +47,15 @@ Settings that appear in more than one app use the same names and units.
 ```
 index.html            landing page with the grid of app cards
 shared/               the shared library every app is built on:
-  core.js             music maths, formatters, settings, storage, envelope maths
+  core.js             music maths, formatters, settings, storage, envelope and sample maths
   audio.js            audio start-up (incl. iOS), reverb + echo, voices, ADSR
-  ui.js               knobs, knob groups, slider panels, collapsible panels
+  ui.js               knobs, knob groups, slider panels, piano keyboard, strips, scope
   nmlq.css            theme colours (dark and light) and shared control styles
 graph/                index.html (page + app styles), graph.js
 fifths/               index.html, fifths.js
 drummer/              index.html, drummer.js
 synth/                index.html, synth.js
+granular/             index.html, granular.js
 tests/                unit, repository and headless-browser tests
 .githooks/pre-commit  runs the tests before each commit
 .github/workflows/    runs the tests on every pull request
@@ -327,3 +329,48 @@ A small oscilloscope shows the output. Settings are saved in the browser;
 
 Files: `synth/index.html` (page and styles) and `synth/synth.js` (voices,
 envelopes, mono / poly engine, keyboard), using the shared library.
+
+## Granular
+
+A granular synthesizer that plays sounds you record. Press **● Record**
+(allow the microphone), make a sound, and press **■ Stop**: the recording is
+trimmed of silence, normalised and stored in the selected memory slot. There
+are four slots; **Load file** puts an audio file in a slot instead,
+**Demo** loads a built-in bell arpeggio (it's there when the page opens),
+**Save WAV** downloads the selected region, and **Clear** empties the slot.
+Slots are kept in memory only, so they're gone when the page closes.
+
+Playing a key starts a stream of *grains*: tiny snippets read from around
+the play position, each with its own small random changes. C4 plays the
+sample at its own pitch; other keys transpose it. The keyboard works like
+Synth's: several keys at once on a touchscreen, the `Z` and `Q` rows on a
+computer keyboard, `←` / `→` for octaves, Space for sustain, `Esc` to stop,
+mono or poly, 3–5 octaves on screen, plus pitch-bend and mod strips.
+
+The display above the controls shows the recorded waveform (live while
+recording, with a level meter), the selected region (drag its edges), the
+play position with its spray (click or drag to move it), and every grain as
+a dot moving through the part of the sound it plays, higher or lower
+according to its stereo position.
+
+| Group | Settings |
+| --- | --- |
+| Grains | Size (5 ms – 1 s), density (1–100 grains per second), timing (random or regular), window shape (Hann, triangle, trapezoid, Gaussian, percussive, reverse percussive), max grains |
+| Position | Position in the region, spray (random spread around it), scan speed (−200% to +200% of real time; **Freeze** holds it still) |
+| Pitch | Transpose (±24 semitones), fine (±100 cents), pitch spray, reverse (chance a grain plays backwards), follow keys or fixed pitch |
+| Spread | Stereo spread, level spray |
+| Amp envelope | Attack, decay, sustain, release |
+| Modulation (LFO) | Wave, rate, and how much it moves the position, pitch, grain size and filter |
+| Voice | Portamento, poly voices (1–8), bend range |
+| Filter ☑ | Low-pass 12/24 dB, high-pass, band-pass or notch; cutoff, resonance |
+| Drive ☐ | Soft saturation |
+| Echo ☐ | Mix, time, feedback |
+| Reverb ☑ | Mix, length |
+| Output | Volume |
+
+☑ / ☐ = effect with an on/off switch, on / off by default. Settings are
+saved in the browser; **Defaults** restores them.
+
+Files: `granular/index.html` (page and styles) and `granular/granular.js`
+(memory slots, recording, grain scheduler, voices, display), using the
+shared library.

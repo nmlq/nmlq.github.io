@@ -49,10 +49,7 @@
     {
       title: 'Filter', params: [
         {
-          key: 'filterType', label: 'Type', value: 'lowpass', options: [
-            ['lowpass', 'Low-pass 12 dB'], ['lowpass24', 'Low-pass 24 dB'], ['highpass', 'High-pass'],
-            ['bandpass', 'Band-pass'], ['notch', 'Notch'],
-          ],
+          key: 'filterType', label: 'Type', value: 'lowpass', options: N.FILTER_TYPES,
         },
         { key: 'cutoff', label: 'Cutoff', min: 30, max: 18000, log: true, value: 1800, format: fmt.hz },
         { key: 'resonance', label: 'Resonance', min: 0, max: 100, step: 1, value: 25, format: fmt.pct },
@@ -124,11 +121,10 @@
     N.restoreParams(DEFS, params, saved);
     if (saved.mode === 'mono' || saved.mode === 'poly') params.mode = saved.mode;
     if ([3, 4, 5].includes(saved.span)) params.span = saved.span;
-    if (Number.isInteger(saved.octave)) params.octave = clamp(saved.octave, 0, maxOctave());
+    if (Number.isInteger(saved.octave)) params.octave = clamp(saved.octave, 0, N.maxOctave(params.span));
     if (typeof saved.labels === 'boolean') params.labels = saved.labels;
   }
 
-  const maxOctave = () => 8 - params.span;
   const cents = (note) => (note - 69) * 100;
 
   // ---------- audio graph ----------
@@ -152,7 +148,6 @@
       const comp = N.audio.compressor(ac, { threshold: -14, knee: 10, ratio: 4, attack: 0.005, release: 0.2 });
       A.analyser = ac.createAnalyser();
       A.analyser.fftSize = 2048;
-      A.scopeData = new Float32Array(A.analyser.fftSize);
 
       A.bus.connect(A.shaper).connect(A.post).connect(A.trem).connect(A.space.input);
       A.space.output.connect(A.master).connect(comp).connect(A.analyser).connect(ac.destination);
@@ -204,12 +199,7 @@
     A.bend.offset.setTargetAtTime(bend * params.bendRange * 100, ac.currentTime, 0.01);
   }
 
-  // Low/high-pass Q is in dB in Web Audio; band-pass and notch Q is unitless.
-  function qValue(type, res) {
-    const r = res / 100;
-    if (type === 'bandpass' || type === 'notch') return 0.5 * Math.pow(2, r * 5.3);
-    return -1 + r * 21;
-  }
+
 
   // ---------- envelopes ----------
   // Shared ADSR helpers track each stage so a retrigger or release can start
@@ -290,7 +280,7 @@
     v.fB.type = lp24 ? 'lowpass' : 'allpass';
     set(v.fA.frequency, params.cutoff);
     set(v.fB.frequency, params.cutoff);
-    set(v.fA.Q, qValue(ft, params.resonance));
+    set(v.fA.Q, N.filterQ(ft, params.resonance));
     set(v.fB.Q, lp24 ? 0 : 0.7);
     set(v.kt.gain, params.keyTrack / 100);
   }
@@ -442,258 +432,30 @@
     mono.voice = null;
   }
 
-  // ---------- input state: held keys and sustain ----------
+  // ---------- keyboard and strips ----------
+  // nmlq.ui.createKeyboard handles touch, mouse, computer keys, octave and
+  // sustain, and calls engineOn / engineOff once per sounding note.
 
-  const phys = new Map();     // note -> number of fingers / keys holding it
-  const sustained = new Set(); // released notes kept on by sustain
-  let pedal = false;          // Space held
-  let latch = false;          // Sustain button
-  const sustainOn = () => pedal || latch;
+  let kb = null;
 
-  function noteDown(n) {
-    if (n < 0 || n > 127) return;
-    const c = phys.get(n) || 0;
-    phys.set(n, c + 1);
-    if (c === 0) {
-      if (sustained.has(n)) { sustained.delete(n); engineOff(n); }
-      engineOn(n);
-    }
-    paintKey(n);
-  }
-
-  function noteUp(n) {
-    const c = phys.get(n) || 0;
-    if (!c) return;
-    if (c > 1) { phys.set(n, c - 1); return; }
-    phys.delete(n);
-    if (sustainOn()) sustained.add(n);
-    else engineOff(n);
-    paintKey(n);
-  }
-
-  function updateSustain() {
-    if (!sustainOn() && sustained.size) {
-      const list = Array.from(sustained);
-      sustained.clear();
-      for (const n of list) { engineOff(n); paintKey(n); }
-    }
-    sustainBtn.setAttribute('aria-pressed', String(sustainOn()));
-  }
-
-  function panic() {
-    phys.clear();
-    sustained.clear();
-    pointers.clear();
-    keysDown.clear();
-    silenceAll();
-    paintAllKeys();
-  }
-
-  // ---------- on-screen keyboard ----------
-
-  const keysEl = document.getElementById('keys');
-  const BLACK = new Set([1, 3, 6, 8, 10]);
-  // Computer keys, as semitones above the lowest C on screen.
-  const KEYMAP = {
-    KeyZ: 0, KeyS: 1, KeyX: 2, KeyD: 3, KeyC: 4, KeyV: 5, KeyG: 6, KeyB: 7, KeyH: 8, KeyN: 9, KeyJ: 10, KeyM: 11,
-    Comma: 12, KeyL: 13, Period: 14, Semicolon: 15, Slash: 16,
-    KeyQ: 12, Digit2: 13, KeyW: 14, Digit3: 15, KeyE: 16, KeyR: 17, Digit5: 18, KeyT: 19, Digit6: 20, KeyY: 21,
-    Digit7: 22, KeyU: 23, KeyI: 24, Digit9: 25, KeyO: 26, Digit0: 27, KeyP: 28, BracketLeft: 29, Equal: 30, BracketRight: 31,
-  };
-  const CODE_CHARS = { Comma: ',', Period: '.', Semicolon: ';', Slash: '/', BracketLeft: '[', BracketRight: ']', Equal: '=' };
-  const codeChar = (code) => CODE_CHARS[code] || code.replace(/^Key|^Digit/, '');
-  // One label per key: the Z row for the first octave, the Q row above it.
-  const KEY_LABELS = {};
-  for (const [code, i] of Object.entries(KEYMAP)) {
-    if (i < 12 || !/^(Comma|KeyL|Period|Semicolon|Slash)$/.test(code)) KEY_LABELS[i] = codeChar(code);
-  }
-
-  let keyEls = [];
-  const baseNote = () => 12 * (params.octave + 1);
-
-  function buildKeyboard() {
-    keysEl.textContent = '';
-    keyEls = [];
-    const count = params.span * 12 + 1;
-    const w = 100 / (params.span * 7 + 1);
-    let whites = 0;
-    for (let i = 0; i < count; i++) {
-      const black = BLACK.has(i % 12);
-      const el = document.createElement('div');
-      el.className = 'key ' + (black ? 'black' : 'white');
-      el.dataset.i = i;
-      if (black) {
-        el.style.left = (whites * w - w * 0.31) + '%';
-        el.style.width = (w * 0.62) + '%';
-      } else {
-        whites++;
-      }
-      const kl = document.createElement('span');
-      kl.className = 'kl';
-      kl.textContent = KEY_LABELS[i] || '';
-      const nn = document.createElement('span');
-      nn.className = 'nn';
-      el.append(kl, nn);
-      keysEl.appendChild(el);
-      keyEls.push(el);
-    }
-    labelKeys();
-  }
-
-  function labelKeys() {
-    const base = baseNote();
-    keyEls.forEach((el, i) => {
-      const n = base + i;
-      const name = N.SHARPS[n % 12] + (Math.floor(n / 12) - 1);
-      el.querySelector('.nn').textContent = n % 12 === 0 ? name : '';
-      el.setAttribute('aria-label', name);
+  function createKeyboard() {
+    kb = N.ui.createKeyboard({
+      keys: document.getElementById('keys'),
+      octave: params.octave, span: params.span, labels: params.labels,
+      rangeEl: document.getElementById('oct-range'),
+      sustainButton: document.getElementById('sustain'),
+      onNoteOn: engineOn,
+      onNoteOff: engineOff,
+      onOctave: (o) => { params.octave = o; saveSettings(); },
+      onPanic: silenceAll,
     });
-    document.getElementById('oct-range').textContent = 'C' + params.octave + '–C' + (params.octave + params.span);
-    keysEl.classList.toggle('no-labels', !params.labels);
-    paintAllKeys();
   }
 
-  function paintKey(n) {
-    const el = keyEls[n - baseNote()];
-    if (!el) return;
-    el.classList.toggle('down', phys.has(n));
-    el.classList.toggle('held', !phys.has(n) && sustained.has(n));
-  }
-
-  function paintAllKeys() {
-    const base = baseNote();
-    keyEls.forEach((_, i) => paintKey(base + i));
-  }
-
-  function setOctave(o) {
-    o = clamp(o, 0, maxOctave());
-    if (o === params.octave) return;
-    params.octave = o;
-    labelKeys();
-    saveSettings();
-  }
-
-  // ---------- pointer input (multi-touch, slide between keys) ----------
-
-  const pointers = new Map(); // pointerId -> note (or null)
-
-  function noteAtPoint(x, y) {
-    const el = document.elementFromPoint(x, y);
-    const k = el && el.closest ? el.closest('.key') : null;
-    if (!k || !keysEl.contains(k)) return null;
-    return baseNote() + parseInt(k.dataset.i, 10);
-  }
-
-  keysEl.addEventListener('pointerdown', (ev) => {
-    if (ev.button > 0) return;
-    ev.preventDefault();
-    const n = noteAtPoint(ev.clientX, ev.clientY);
-    pointers.set(ev.pointerId, n);
-    if (n != null) noteDown(n);
-  });
-
-  window.addEventListener('pointermove', (ev) => {
-    if (!pointers.has(ev.pointerId)) return;
-    const n = noteAtPoint(ev.clientX, ev.clientY);
-    const prev = pointers.get(ev.pointerId);
-    if (n === prev) return;
-    if (prev != null) noteUp(prev);
-    if (n != null) noteDown(n);
-    pointers.set(ev.pointerId, n);
-  });
-
-  function endPointer(ev) {
-    if (!pointers.has(ev.pointerId)) return;
-    const n = pointers.get(ev.pointerId);
-    pointers.delete(ev.pointerId);
-    if (n != null) noteUp(n);
-  }
-  window.addEventListener('pointerup', endPointer);
-  window.addEventListener('pointercancel', endPointer);
-  keysEl.addEventListener('contextmenu', (ev) => ev.preventDefault());
-
-  // ---------- computer keyboard ----------
-
-  const keysDown = new Map(); // event.code -> note
-
-  window.addEventListener('keydown', (ev) => {
-    if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.defaultPrevented) return;
-    if (N.isTypingTarget(ev.target)) return;
-    if (ev.code === 'Space') {
-      ev.preventDefault();
-      if (!pedal) { pedal = true; updateSustain(); }
-      return;
-    }
-    if (ev.key === 'Escape') { panic(); return; }
-    if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') { ev.preventDefault(); if (!ev.repeat) setOctave(params.octave - 1); return; }
-    if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') { ev.preventDefault(); if (!ev.repeat) setOctave(params.octave + 1); return; }
-    if (!(ev.code in KEYMAP)) return;
-    ev.preventDefault();
-    if (ev.repeat || keysDown.has(ev.code)) return;
-    const n = baseNote() + KEYMAP[ev.code];
-    keysDown.set(ev.code, n);
-    noteDown(n);
-  });
-
-  window.addEventListener('keyup', (ev) => {
-    if (ev.code === 'Space') {
-      ev.preventDefault(); // keep Space from clicking a focused button
-      if (pedal) { pedal = false; updateSustain(); }
-    }
-    if (!keysDown.has(ev.code)) return;
-    noteUp(keysDown.get(ev.code));
-    keysDown.delete(ev.code);
-  });
-
-  // Let go of everything if the window loses focus mid-press.
-  window.addEventListener('blur', () => {
-    for (const n of keysDown.values()) noteUp(n);
-    keysDown.clear();
-    for (const n of pointers.values()) if (n != null) noteUp(n);
-    pointers.clear();
-    if (pedal) { pedal = false; updateSustain(); }
-  });
-
-  // ---------- pitch bend and mod wheel strips ----------
-
-  function makeStrip(track, o) {
-    const thumb = track.querySelector('.thumb');
-    let value = o.value;
-    const render = () => { thumb.style.top = ((1 - value) * 100) + '%'; };
-    const fromEvent = (ev) => {
-      const r = track.getBoundingClientRect();
-      return clamp(1 - (ev.clientY - r.top) / r.height, 0, 1);
-    };
-    let active = null;
-    track.addEventListener('pointerdown', (ev) => {
-      ev.preventDefault();
-      track.setPointerCapture(ev.pointerId);
-      active = ev.pointerId;
-      value = fromEvent(ev);
-      render();
-      o.onInput(value);
-    });
-    track.addEventListener('pointermove', (ev) => {
-      if (ev.pointerId !== active) return;
-      value = fromEvent(ev);
-      render();
-      o.onInput(value);
-    });
-    const end = (ev) => {
-      if (ev.pointerId !== active) return;
-      active = null;
-      if (o.spring != null) { value = o.spring; render(); o.onInput(value); }
-    };
-    track.addEventListener('pointerup', end);
-    track.addEventListener('pointercancel', end);
-    render();
-  }
-
-  makeStrip(document.getElementById('bend'), {
+  N.ui.makeStrip(document.getElementById('bend'), {
     value: 0.5, spring: 0.5,
     onInput: (v) => { bend = v * 2 - 1; if (Math.abs(bend) < 0.04) bend = 0; applyGlobal(); },
   });
-  makeStrip(document.getElementById('mod'), {
+  N.ui.makeStrip(document.getElementById('mod'), {
     value: 0,
     onInput: (v) => { modWheel = v; applyGlobal(); },
   });
@@ -731,7 +493,6 @@
 
   const monoBtn = document.getElementById('mono');
   const polyBtn = document.getElementById('poly');
-  const sustainBtn = document.getElementById('sustain');
   const spanSel = document.getElementById('span');
   const labelsCb = document.getElementById('labels');
 
@@ -741,8 +502,7 @@
       silenceAll();
       params.mode = mode;
       saveSettings();
-      const held = new Set([...phys.keys(), ...sustained]);
-      if (held.size) for (const n of held) engineOn(n);
+      for (const n of kb.held()) engineOn(n);
     }
     monoBtn.setAttribute('aria-pressed', String(mode === 'mono'));
     polyBtn.setAttribute('aria-pressed', String(mode === 'poly'));
@@ -750,21 +510,20 @@
 
   monoBtn.addEventListener('click', () => setMode('mono'));
   polyBtn.addEventListener('click', () => setMode('poly'));
-  document.getElementById('oct-down').addEventListener('click', () => setOctave(params.octave - 1));
-  document.getElementById('oct-up').addEventListener('click', () => setOctave(params.octave + 1));
-  sustainBtn.addEventListener('click', () => { latch = !latch; updateSustain(); });
-  document.getElementById('panic').addEventListener('click', panic);
+  document.getElementById('oct-down').addEventListener('click', () => kb.shiftOctave(-1));
+  document.getElementById('oct-up').addEventListener('click', () => kb.shiftOctave(1));
+  document.getElementById('panic').addEventListener('click', () => kb.panic());
 
   spanSel.addEventListener('change', () => {
     params.span = parseInt(spanSel.value, 10);
-    params.octave = clamp(params.octave, 0, maxOctave());
-    buildKeyboard();
+    kb.setSpan(params.span);
+    params.octave = kb.octave;
     saveSettings();
     spanSel.blur();
   });
   labelsCb.addEventListener('change', () => {
     params.labels = labelsCb.checked;
-    keysEl.classList.toggle('no-labels', !params.labels);
+    kb.setLabels(params.labels);
     saveSettings();
     labelsCb.blur();
   });
@@ -784,44 +543,10 @@
 
   // ---------- oscilloscope ----------
 
-  const scope = document.getElementById('scope');
-  const sctx = scope.getContext('2d');
-  let scopeColor = '';
-  const readColor = () => { scopeColor = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(); };
-  readColor();
-  if (window.matchMedia) {
-    const mq = window.matchMedia('(prefers-color-scheme: light)');
-    if (mq.addEventListener) mq.addEventListener('change', readColor);
-  }
-
-  function drawScope() {
-    const dpr = window.devicePixelRatio || 1;
-    const w = Math.round(scope.clientWidth * dpr), h = Math.round(scope.clientHeight * dpr);
-    if (!w || !h) return;
-    if (scope.width !== w || scope.height !== h) { scope.width = w; scope.height = h; }
-    sctx.clearRect(0, 0, w, h);
-    sctx.strokeStyle = scopeColor;
-    sctx.lineWidth = 1.5 * dpr;
-    sctx.beginPath();
-    const live = A.ctx && A.voices.length;
-    if (!live) {
-      sctx.moveTo(0, h / 2);
-      sctx.lineTo(w, h / 2);
-    } else {
-      const data = A.scopeData;
-      A.analyser.getFloatTimeDomainData(data);
-      // Start on a rising zero crossing so the wave stands still.
-      let start = 0;
-      for (let i = 1; i < data.length / 2; i++) if (data[i - 1] < 0 && data[i] >= 0) { start = i; break; }
-      const n = 700;
-      for (let i = 0; i < n; i++) {
-        const x = (i / (n - 1)) * w;
-        const y = h / 2 - clamp(data[start + i] * 1.6, -1, 1) * (h / 2 - 2 * dpr);
-        if (i) sctx.lineTo(x, y); else sctx.moveTo(x, y);
-      }
-    }
-    sctx.stroke();
-  }
+  const scope = N.ui.createScope(document.getElementById('scope'), {
+    analyser: () => A.analyser,
+    active: () => !!(A.ctx && A.voices.length),
+  });
 
   // ---------- starting audio ----------
 
@@ -832,13 +557,13 @@
   loadDefaults();
   loadSettings();
   buildPanel();
-  buildKeyboard();
+  createKeyboard();
   spanSel.value = String(params.span);
   labelsCb.checked = params.labels;
   setMode(params.mode);
 
   function frame() {
-    drawScope();
+    scope.draw();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

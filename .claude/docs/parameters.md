@@ -69,6 +69,7 @@ Use these names, labels, units and ranges when an app has the concept.
 | Strum | `strum` | Strum | 0–200 ms | 35 / 25 ms | Graph, Fifths |
 | Chord type | `chord` / `style` | Chord / Chord type | power, major, minor, sus, 7th, add 9 … | none / triad | Graph, Fifths |
 | Pan | `pan` | Pan | −100…100 | 0 | Drummer |
+| Filter on/off, drive on/off, echo on/off, reverb on/off | `filterOn` / `driveOn` / `echoOn` / `reverbOn` | group switch | bool | on / off / off / on | Granular |
 
 ## App-specific parameters
 
@@ -80,6 +81,14 @@ Use these names, labels, units and ranges when an app has the concept.
   slide, auto-play (progression, beats per chord, chords or arpeggio).
 - **Drummer** — per-drum pitch, pitch drop + drop time, noise decay;
   transport (BPM, shuffle, volume); rows with mute / solo.
+- **Granular** — grains (size 5–1000 ms, density 1–100/s, timing
+  async/sync, window shape, max grains), position (position, spray, scan
+  speed ±200%, Freeze), pitch (transpose ±24 st, fine ±100¢, pitch spray
+  0–1200¢, reverse chance, follow keys / fixed), spread (stereo, level
+  spray), amp ADSR, LFO (rate, → position / pitch / size / filter), voice
+  (portamento, poly voices 1–8, bend range); effects with group switches
+  (filter, drive, echo, reverb); memory slots and sample region are not
+  saved (slots live in memory only).
 - **Synth** — osc 2 semitones, sub level, key tracking, filter env amount
   (±), filter ADSR, LFO rate / filter / tremolo, portamento + glide mode,
   mono envelopes (legato / retrigger), poly voices, bend range; plus layout

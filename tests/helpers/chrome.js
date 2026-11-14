@@ -32,6 +32,8 @@ async function launch(chromePath) {
     '--allow-file-access-from-files', '--remote-debugging-pipe', `--user-data-dir=${userDir}`,
     '--window-size=1280,800',
   ];
+  // Extra flags for debugging, e.g. CHROME_EXTRA_ARGS='--enable-logging=stderr'.
+  if (process.env.CHROME_EXTRA_ARGS) args.push(...process.env.CHROME_EXTRA_ARGS.split(' ').filter(Boolean));
   // CI runners (and containers) often can't use Chrome's sandbox.
   if (process.env.CI || process.platform === 'linux') args.push('--no-sandbox');
   const proc = spawn(chromePath, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
@@ -123,6 +125,8 @@ async function launch(chromePath) {
         }
         return r.result.value;
       },
+      // PNG of the page as a Buffer (handy when debugging a test).
+      screenshot: async () => Buffer.from((await cmd('Page.captureScreenshot', { format: 'png' })).data, 'base64'),
       setViewport: (width, height) => cmd('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false }),
       close: () => send('Target.closeTarget', { targetId }),
     };

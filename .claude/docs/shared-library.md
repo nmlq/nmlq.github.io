@@ -41,6 +41,12 @@ tests can `require` it; `audio.js` and `ui.js` need `nmlq` to already exist.
 | `knobScale({min,max,step?,log?})` | `{ toNorm, fromNorm }` for knobs |
 | `arcPath(a0, a1)` | SVG arc on the 40×40 knob face |
 | `isTypingTarget(el)` | True for text inputs / textareas / selects — skip shortcuts |
+| `FILTER_TYPES` / `filterQ(type, res)` | Filter options (LP 12/24, HP, BP, notch) and resonance 0–100% → BiquadFilter Q (dB for LP/HP) |
+| `GRAIN_SHAPES` / `grainWindow(shape, n)` | Grain window options and an `n`-sample window (Hann, triangle, trapezoid, Gaussian, percussive, reverse) |
+| `computePeaks(data, columns)` | `{ min, max }` per column for drawing a waveform |
+| `peakOf(data)` / `trimBounds(data, threshold?, pad?)` / `normalize(data, target?)` | Sample clean-up for recordings |
+| `encodeWav(samples, rate)` | Mono 16-bit WAV `ArrayBuffer` |
+| `KEYMAP` / `KEY_LABELS` / `BLACK_KEYS` / `maxOctave(span)` | Computer-key → semitone map (Z row, Q row), on-screen labels, black-key pitch classes, highest keyboard octave |
 
 ## `audio.js` — `nmlq.audio`
 
@@ -80,9 +86,12 @@ N.audio.installUnlock({ ensure: ensureAudio, current: () => audio.ctx });
 | Name | What it does |
 | --- | --- |
 | `makeKnob(o)` | Rotary knob → `{ el, set(v) }`. `o`: `label, min, max, step?, log?, value, def (reset), format?, onInput(v), onChange?(v)` (gesture end) |
-| `buildKnobGroups(container, groups, { values, defaults?, onInput(key, v), onChange?(key, v) })` | Boxed groups of knobs / drop-downs from `[{ title, params }]` → `{ set(key, v), sync(values) }` |
+| `buildKnobGroups(container, groups, { values, defaults?, onInput(key, v), onChange?(key, v) })` | Boxed groups of knobs / drop-downs from `[{ title, params, toggle? }]` → `{ set(key, v), sync(values) }`. `toggle: 'key'` adds an on/off switch to the group title bound to the boolean `values[key]` (used for effects) |
 | `buildParamPanel({ defs, params, enabled, container(sectionDef), onChange(key) })` | Slider panel from flat definitions (sections, checkboxes, drop-downs, sliders with optional on/off) → `{ sync() }` |
 | `collapsible(button, panel, onChange?)` | Hide / Show button for a `.panel` → `setCollapsed(bool)` |
+| `createKeyboard({ keys, octave, span, labels, rangeEl?, sustainButton?, onNoteOn(n), onNoteOff(n), onOctave?(o), onPanic?() })` | Piano keyboard: multi-touch with sliding, mouse, computer keys (`KEYMAP`), ←/→ octave, Space sustain, Esc all off, release on blur → `{ setOctave, shiftOctave(d), setSpan, setLabels, panic, held(), octave, span }`. Each sounding note gets one `onNoteOn` / `onNoteOff` |
+| `makeStrip(track, { value, spring?, onInput(v) })` | Vertical bend / mod strip (0 bottom … 1 top; springs back with `spring`) |
+| `createScope(canvas, { analyser(), active(), gain? })` | Oscilloscope of an `AnalyserNode` → `{ draw() }` (call each frame) |
 
 ## `nmlq.css`
 
@@ -91,7 +100,11 @@ Theme tokens (`--bg`, `--fg`, `--muted`, `--panel`, `--panel-float`,
 `--lit-l`) with light-mode values, base page styles, and the styles for
 buttons / selects / `a.btn`, `.card`, `.hint`, `.buttons`, floating
 `.panel` + `.section-title` + `.param-*` rows, `.groups` / `.group` /
-`.field`, and `.knob`. Element rules use `:where()` (zero specificity) so
+`.field`, group switches (`.group-toggle`, `.group.off`), and `.knob`. The
+keyboard-instrument layout (Synth, Granular; add `class="instrument"` to
+`<body>`) styles `.app`, `.top`, `.seg`, `.octave`, `.controls`, `.kbd`,
+`.strip`, `.keys` / `.key` and `#scope`, with `--white-key` /
+`--black-key` tokens. Element rules use `:where()` (zero specificity) so
 any app rule wins.
 
 ## Changing the library

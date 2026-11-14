@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Granular · nmlq</title>
+  <link rel="stylesheet" href="../shared/nmlq.css">
+  <style>
+    :root { --rec: #e5484d; }
+    @media (prefers-color-scheme: light) {
+      :root { --rec: #d93036; }
+    }
+
+    /* ----- sample / heads-up display ----- */
+    .hud {
+      flex: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hud-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px 8px;
+    }
+    #record { min-width: 86px; }
+    #record[aria-pressed="true"] { background: var(--rec); border-color: var(--rec); color: #fff; }
+    label.btn {
+      font: inherit;
+      color: var(--fg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 9px;
+      cursor: pointer;
+    }
+    label.btn:hover { border-color: var(--accent); color: var(--accent); }
+    label.btn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+    label.btn input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+    .slots { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+    .slot { min-width: 76px; font-variant-numeric: tabular-nums; }
+    .slot.empty:not([aria-pressed="true"]) { color: var(--muted); }
+    .hud-status {
+      flex: 1 1 140px;
+      min-width: 0;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: right;
+    }
+    #hud {
+      display: block;
+      width: 100%;
+      height: clamp(90px, 18vh, 170px);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--cell);
+      touch-action: none;
+      cursor: crosshair;
+    }
+    .kbd { height: clamp(130px, 28vh, 240px); }
+    @media (max-width: 1360px) {
+      .app .hint { display: none; }
+    }
+
+    @media (max-width: 640px) {
+      .hud-status { flex-basis: 100%; text-align: left; }
+      .slot { min-width: 0; }
+    }
+    @media (max-height: 520px) {
+      #hud { height: 64px; }
+      .hud-status { display: none; }
+    }
+  </style>
+</head>
+<body class="instrument">
+  <div class="app">
+    <section class="card top" aria-label="Granular controls">
+      <a class="btn" href="../" aria-label="Back to all items">←</a>
+      <h1>Granular</h1>
+      <div class="seg" role="group" aria-label="Voice mode">
+        <button id="mono" aria-pressed="false">Mono</button>
+        <button id="poly" aria-pressed="true">Poly</button>
+      </div>
+      <div class="octave" role="group" aria-label="Keyboard octave">
+        <button id="oct-down" aria-label="Octave down">−</button>
+        <span class="range" id="oct-range" aria-live="polite">C3–C6</span>
+        <button id="oct-up" aria-label="Octave up">+</button>
+      </div>
+      <button id="sustain" aria-pressed="false" title="Hold notes after release (or hold Space)">Sustain</button>
+      <button id="panic" title="Stop all notes (Esc)">All off</button>
+      <label class="small-label">Keys
+        <select id="span" aria-label="Octaves on screen">
+          <option value="3">3 octaves</option>
+          <option value="4">4 octaves</option>
+          <option value="5">5 octaves</option>
+        </select>
+      </label>
+      <label class="small-label"><input type="checkbox" id="labels"> Labels</label>
+      <button id="defaults">Defaults</button>
+      <span class="hint">Z–/ &amp; Q–] play · ←/→ octave · Space sustain</span>
+      <canvas id="scope" aria-hidden="true"></canvas>
+    </section>
+
+    <section class="card hud" aria-label="Sample">
+      <div class="hud-bar">
+        <button id="record" aria-pressed="false" title="Record from the microphone into the selected slot">● Record</button>
+        <label class="btn" title="Load an audio file into the selected slot">Load file<input type="file" id="file" accept="audio/*"></label>
+        <button id="demo" title="Put the built-in demo sound into the selected slot">Demo</button>
+        <div class="slots" id="slots" role="group" aria-label="Memory slots"></div>
+        <button id="freeze" aria-pressed="false" title="Stop the scan and hold the current position">Freeze</button>
+        <button id="save" title="Download the selected slot as a WAV file">Save WAV</button>
+        <button id="clear" title="Empty the selected slot">Clear</button>
+        <span class="hud-status" id="status" aria-live="polite"></span>
+      </div>
+      <canvas id="hud" role="img" aria-label="Recorded waveform with the playing grains"></canvas>
+    </section>
+
+    <section class="card controls" aria-label="Sound settings">
+      <div class="groups" id="groups"></div>
+    </section>
+
+    <section class="card kbd" aria-label="Keyboard">
+      <div class="strip bend" title="Pitch bend — springs back when released">
+        <div class="track" id="bend"><div class="thumb"></div></div>
+        <span class="small-label">Bend</span>
+      </div>
+      <div class="strip mod" title="Mod wheel — adds LFO pitch wobble">
+        <div class="track" id="mod"><div class="thumb"></div></div>
+        <span class="small-label">Mod</span>
+      </div>
+      <div class="keys" id="keys"></div>
+    </section>
+  </div>
+
+  <script src="../shared/core.js"></script>
+  <script src="../shared/audio.js"></script>
+  <script src="../shared/ui.js"></script>
+  <script src="granular.js"></script>
+</body>
+</html>
