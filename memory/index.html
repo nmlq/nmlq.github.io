@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="../shared/favicon.svg?v=9e1065bfcf" type="image/svg+xml">
+  <title>Memory · nmlq</title>
+  <link rel="stylesheet" href="../shared/nmlq.css?v=b9bbea25f2">
+  <style>
+    :root { --pad-dim: 0.28; }
+    @media (prefers-color-scheme: light) {
+      :root { --pad-dim: 0.32; }
+    }
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 16px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ----- top bar ----- */
+    .top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 14px;
+    }
+    .top h1 { font-size: 15px; margin: 0; font-weight: 650; }
+    #status { font-weight: 600; min-width: 7em; }
+    #best { color: var(--muted); font-variant-numeric: tabular-nums; }
+    .top .spacer { flex: 1; }
+
+    /* ----- board ----- */
+    .stage { display: grid; place-items: center; padding: 20px 0; }
+    .board {
+      position: relative;
+      width: min(440px, 100%);
+      aspect-ratio: 1;
+      display: grid;
+      grid-template: 1fr 1fr / 1fr 1fr;
+      gap: 10px;
+      border-radius: 50%;
+      padding: 10px;
+      background: var(--cell);
+      border: 1px solid var(--border);
+    }
+    .pad {
+      position: relative;
+      border: 1px solid var(--border);
+      border-radius: 0;
+      padding: 0;
+      background: hsla(var(--hue), 70%, var(--lit-l), var(--pad-dim));
+      color: var(--fg);
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.18s, box-shadow 0.18s, filter 0.18s;
+    }
+    .pad:hover { border-color: hsl(var(--hue), 70%, var(--lit-l)); color: var(--fg); }
+    .pad.lit {
+      background: hsl(var(--hue), 85%, 62%);
+      box-shadow: 0 0 28px hsla(var(--hue), 90%, 60%, 0.75);
+      filter: brightness(1.12);
+      transition: none;
+      z-index: 1;
+    }
+    .pad[data-pad="0"] { grid-area: 1 / 1; border-radius: 100% 0 0 0; }
+    .pad[data-pad="1"] { grid-area: 1 / 2; border-radius: 0 100% 0 0; }
+    .pad[data-pad="2"] { grid-area: 2 / 2; border-radius: 0 0 100% 0; }
+    .pad[data-pad="3"] { grid-area: 2 / 1; border-radius: 0 0 0 100%; }
+    .pad .tag {
+      position: absolute;
+      font-size: 12px;
+      line-height: 1.3;
+      text-align: center;
+      opacity: 0.8;
+      pointer-events: none;
+    }
+    .pad .tag kbd { font: inherit; color: var(--muted); }
+    .pad[data-pad="0"] .tag { right: 50%; bottom: 50%; }
+    .pad[data-pad="1"] .tag { left: 50%; bottom: 50%; }
+    .pad[data-pad="2"] .tag { left: 50%; top: 50%; }
+    .pad[data-pad="3"] .tag { right: 50%; top: 50%; }
+    body[data-state="demo"] .pad { cursor: default; }
+
+    .hub {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: 38%;
+      aspect-ratio: 1;
+      transform: translate(-50%, -50%);
+      border-radius: 50%;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      z-index: 2;
+    }
+    .hub .count { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1; }
+    .hub .of { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    #start { padding: 6px 16px; font-weight: 600; }
+    body[data-state="won"] .hub { border-color: var(--accent); }
+
+    #sound[hidden] { display: none; }
+
+    @media (max-width: 640px) {
+      main { padding: 8px 8px 32px; gap: 8px; }
+      .top .hint { display: none; }
+      .hub .count { font-size: 20px; }
+      .board { gap: 7px; padding: 7px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .pad { transition: none; }
+    }
+  </style>
+</head>
+<body data-state="idle">
+  <main>
+    <section class="card top" aria-label="Memory controls">
+      <a class="btn" href="../" aria-label="Back to all items">←</a>
+      <h1>Memory</h1>
+      <span id="status" aria-live="polite">Press Start</span>
+      <span id="best">Best 0</span>
+      <span class="spacer"></span>
+      <button id="show-sound" aria-pressed="false" aria-controls="sound">Sound</button>
+      <button id="defaults">Defaults</button>
+      <span class="hint">Pads: Q W S A or 1–4 · Space start · Esc stop</span>
+    </section>
+
+    <section class="card stage" aria-label="Game board">
+      <div class="board" id="board">
+        <button class="pad" data-pad="0" style="--hue: 140" aria-label="Green pad"><span class="tag"></span></button>
+        <button class="pad" data-pad="1" style="--hue: 0" aria-label="Red pad"><span class="tag"></span></button>
+        <button class="pad" data-pad="2" style="--hue: 215" aria-label="Blue pad"><span class="tag"></span></button>
+        <button class="pad" data-pad="3" style="--hue: 48" aria-label="Yellow pad"><span class="tag"></span></button>
+        <div class="hub">
+          <span class="count" id="count">–</span>
+          <span class="of" id="of">of 12</span>
+          <button id="start">Start</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-label="Game settings">
+      <div class="groups" id="game-groups"></div>
+    </section>
+
+    <section class="card" id="sound" aria-label="Sound settings" hidden>
+      <div class="groups" id="sound-groups"></div>
+    </section>
+  </main>
+
+  <script src="../shared/core.js?v=f2299644e6"></script>
+  <script src="../shared/audio.js?v=6d8201b6e6"></script>
+  <script src="../shared/ui.js?v=a53f48852a"></script>
+  <script src="memory.js?v=665c837d3c"></script>
+</body>
+</html>

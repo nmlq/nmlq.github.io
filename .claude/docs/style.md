@@ -128,5 +128,5 @@ rotates 22.5° unless it has `class="no-spin"` (then it scales 1.06). Respect
 
 Thumbnail classes already defined: `.edges`, `.nodes` (+ `.small`, `.lit`),
 `.chord-shape`, `.cells rect` (+ `.on`), `.keys-w rect`, `.keys-b rect`
-(+ `.on`), `.wave`. Thumbnails use only theme tokens so they follow the
+(+ `.on`), `.wave`, `.spray`, `.quad` (+ `.on`), `.hub`. Thumbnails use only theme tokens so they follow the
 colour scheme.

@@ -14,6 +14,7 @@ landing page (`index.html`) is a grid of cards, one per app.
 | [Drummer](drummer/) | `drummer/` | A 16-step drum sequencer. Every drum (kick, snare, hats, toms, clap, …) is a preset of one sound generator you can edit. |
 | [Synth](synth/) | `synth/` | A basic subtractive synthesizer with a 3–5 octave keyboard you play by touch (multi-touch) or with the computer keyboard; mono or poly, with filter, ADSR envelopes, LFO and portamento. |
 | [Granular](granular/) | `granular/` | A granular synthesizer: record a sound in the browser (or load a file), keep up to four in memory, and play it from a 3–5 octave keyboard as clouds of tiny grains, with a live display of the waveform and every grain. |
+| [Memory](memory/) | `memory/` | A memory game: four coloured pads in a circle, each with a note. Repeat the random sequence as it grows one step a round; finish it to win. Notes and sound are editable. |
 
 All apps work with mouse, pen, touch and keyboard, follow the system's light
 or dark mode, and remember their settings in the browser (each has a
@@ -28,6 +29,8 @@ The apps are separate pages but share one sound vocabulary and one look:
 - **Waveforms** — sine, triangle, sawtooth and square everywhere.
 - **Envelopes** — linear attack, exponential decay; Synth adds full ADSR
   (attack, decay, sustain, release) for both its filter and amplifier.
+- **Synth voice** — Synth and Memory play the same shared subtractive
+  voice (two oscillators, sub, noise, filter, two ADSRs, LFO).
 - **Tone** — Graph and Fifths use two detuned oscillators ("chorus"), an
   optional octave "shimmer", vibrato and a brightness (low-pass) control;
   Drummer and Synth have full filters (low-pass, high-pass, band-pass, and in
@@ -36,8 +39,8 @@ The apps are separate pages but share one sound vocabulary and one look:
 - **Space** — the same generated reverb (mix, length) and feedback echo
   (mix, time, feedback) in Graph, Fifths and Synth, all ending in a gentle
   compressor.
-- **Controls** — Graph and Fifths use a slide-out settings panel; Drummer
-  and Synth use rotary knobs (drag up/down, scroll or arrow keys;
+- **Controls** — Graph and Fifths use a slide-out settings panel; Drummer,
+  Synth, Granular and Memory use rotary knobs (drag up/down, scroll or arrow keys;
   double-click resets).
 
 Settings that appear in more than one app use the same names and units.
@@ -56,6 +59,7 @@ fifths/               index.html, fifths.js
 drummer/              index.html, drummer.js
 synth/                index.html, synth.js
 granular/             index.html, granular.js
+memory/               index.html, memory.js
 tests/                unit, repository and headless-browser tests
 scripts/stamp.js      cache-busting ?v= stamps for the pages' script and style URLs
 favicon.ico           site icon
@@ -382,3 +386,34 @@ saved in the browser; **Defaults** restores them.
 Files: `granular/index.html` (page and styles) and `granular/granular.js`
 (memory slots, recording, grain scheduler, voices, display), using the
 shared library.
+
+## Memory
+
+A memory game. Four coloured pads (green, red, blue, yellow) sit in a
+circle, and each plays its own note. Press **Start** (or Space): the game
+plays a random sequence, lighting each pad as it sounds. Repeat it by
+pressing the pads — click or tap them, or use `Q` `W` `S` `A` (clockwise
+from top-left) or `1`–`4`. Every round adds one more random step to the end
+of the sequence. Repeat the whole sequence at the chosen length and you win;
+press a wrong pad and the game is over. `Esc` (or **Stop**) ends a game.
+Outside a game the pads are a little four-note instrument. Your best score
+is kept in the browser.
+
+| Game setting | What it does |
+| --- | --- |
+| Length | Steps needed to win (2–50, 12 by default) |
+| Speed | How fast the sequence plays (50–300%) |
+| Tempo | Speeds up as the sequence gets longer, or stays steady |
+| On a mistake | Game over, or try again (the sequence replays) |
+
+**Sound** opens the sound screen. The pads' notes start as a C major 7th
+chord (C E G B); pick another chord (minor 7th, dominant 7th, major or
+minor with the octave, sus 4, add 9, pentatonic, stacked fifths), any root
+note and octave, or set each pad's note on its own. The voice is the same
+engine as the Synth app — oscillators, mixer, filter, filter and amp
+envelopes and LFO — with a soft, bell-like default, plus volume, reverb and
+echo. **Defaults** restores every setting.
+
+Files: `memory/index.html` (page, board and styles) and `memory/memory.js`
+(game, pads, settings), using the shared synth voice
+(`nmlq.audio.createSynth`).

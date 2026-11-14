@@ -17,7 +17,7 @@ Every app describes its settings as data and builds the UI from it.
 Values live in `params[key]`, on/off state in `enabled[key]`
 (`on(k) = enabled[k] !== false`).
 
-**Knob style (Drummer, Synth)** — `GROUPS = [{ title, params: [...] }]`,
+**Knob style (Drummer, Synth, Granular, Memory)** — `GROUPS = [{ title, params: [...] }]`,
 each param `{ key, label, min, max, step?, log?, value, format }` (knob) or
 `{ key, label, options, value }` (drop-down). Flatten with
 `GROUPS.flatMap(g => g.params)`.
@@ -89,6 +89,12 @@ Use these names, labels, units and ranges when an app has the concept.
   (portamento, poly voices 1–8, bend range); effects with group switches
   (filter, drive, echo, reverb); memory slots and sample region are not
   saved (slots live in memory only).
+- **Memory** — game: length (2–50 steps), speed (50–300 %), tempo (speeds
+  up / steady), on a mistake (game over / try again); notes: chord preset
+  (major 7th default, minor 7th, dominant 7th, …, custom), root, octave,
+  and one note per pad (`pad0`–`pad3`, MIDI 36–96); the shared synth voice
+  groups with softer defaults; output (volume, reverb, echo). The best
+  score is saved with the settings.
 - **Synth** — osc 2 semitones, sub level, key tracking, filter env amount
   (±), filter ADSR, LFO rate / filter / tremolo, portamento + glide mode,
   mono envelopes (legato / retrigger), poly voices, bend range; plus layout

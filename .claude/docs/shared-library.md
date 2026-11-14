@@ -46,6 +46,9 @@ tests can `require` it; `audio.js` and `ui.js` need `nmlq` to already exist.
 | `computePeaks(data, columns)` | `{ min, max }` per column for drawing a waveform |
 | `peakOf(data)` / `trimBounds(data, threshold?, pad?)` / `normalize(data, target?)` | Sample clean-up for recordings |
 | `encodeWav(samples, rate)` | Mono 16-bit WAV `ArrayBuffer` |
+| `synthVoiceGroups(overrides?)` | Fresh knob groups for one `audio.createSynth` voice (osc 1/2, mixer, filter, filter env, amp env, LFO); `overrides` = `{ key: default }` per app |
+| `SYNTH_VOICE_KEYS` / `SYNTH_GLOBAL_KEYS` | Voice keys to re-apply with `configureAll()` / LFO keys for `applyGlobal()` |
+| `fmtRate(v)` | LFO rate formatter (`"5.00 Hz"`) |
 | `KEYMAP` / `KEY_LABELS` / `BLACK_KEYS` / `maxOctave(span)` | Computer-key → semitone map (Z row, Q row), on-screen labels, black-key pitch classes, highest keyboard octave |
 
 ## `audio.js` — `nmlq.audio`
@@ -59,6 +62,7 @@ tests can `require` it; `audio.js` and `ui.js` need `nmlq` to already exist.
 | `noiseBuffer(ac, seconds?)` / `impulseBuffer(ac, seconds)` | Buffers |
 | `createSpace(ac, reverbSeconds)` | Reverb + echo send: `{ input, output, set({reverb, echo, echoTime, echoFeedback}, immediate), setLength(s), setLengthSoon(s) }` (mixes 0..1, time in seconds) |
 | `createPluck(ac, { output, lfo?, maxVoices? })` | Graph/Fifths ring-out voices: `{ play(freq, peak, when, {wave, attack, decay, detune, shimmer}), release(v, s), stopAll(s?), voices }` |
+| `createSynth(ac, { output?, params, onFree? })` | Subtractive voices (Synth, Memory), reading `params` (keys of `synthVoiceGroups`) live: `{ output (tremolo stage), voices, cents(note), applyGlobal(immediate, {vibrato, bend}), voice(note, t, startCents?), configure(v), configureAll(), trigger(v, t, fromCurrent), release(v), steal(v), kill(v), makeRoom(max), play(note, seconds?, max?), stopAll() }`; `onFree(v)` fires when a voice is stolen or freed. Needs `ConstantSourceNode` |
 | `envStart(params, e, t, from, peak, sustain, a, d)` | Schedule an ADSR attack/decay on one or more params and record it in `e` |
 | `envRelease(params, e, now, r)` | Release from the current level (`adsrValue`) |
 | `installUnlock({ ensure, current, enabled? })` | Start audio on the first gesture with the iOS silent-switch workarounds, and resume on `visibilitychange` |

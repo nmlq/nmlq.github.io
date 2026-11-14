@@ -14,9 +14,9 @@ npm run test:browser   # headless Chrome
 | File | What it covers |
 | --- | --- |
 | `core.test.js` | `shared/core.js`: music maths, formatters, parameter defaults / validation, storage, envelope maths, curves, WAV, knob maths, `isTypingTarget` |
-| `audio.test.js` | `shared/audio.js` against a fake `AudioContext`: wiring of the reverb/echo chain, mix formulas, pluck voices (detune, shimmer, stealing, release), ADSR scheduling matching `adsrValue` |
+| `audio.test.js` | `shared/audio.js` against a fake `AudioContext`: wiring of the reverb/echo chain, mix formulas, pluck voices (detune, shimmer, stealing, release), subtractive synth voices (wiring, settings, envelopes, stealing, LFO), ADSR scheduling matching `adsrValue` |
 | `repo.test.js` | Every app loads the shared files in order, parses, starts audio via the shared unlock, doesn't re-implement shared helpers or redefine theme tokens, has a landing-page card and a README section |
-| `browser.test.js` | Loads every page in headless Chrome and fails on any exception, `console.error` or missing file; exercises the shared UI components and each app (Synth keys/touch/sustain/mono, Granular grains/effect switches/display/recording/slots, Fifths chords/auto-play, Drummer sequencer/knobs, Graph panels/pointer), and checks no page scrolls sideways at phone width |
+| `browser.test.js` | Loads every page in headless Chrome and fails on any exception, `console.error` or missing file; exercises the shared UI components and each app (Synth keys/touch/sustain/mono, Granular grains/effect switches/display/recording/slots, Fifths chords/auto-play, Drummer sequencer/knobs, Graph panels/pointer, Memory sequence/win/mistakes/sound screen), and checks no page scrolls sideways at phone width |
 | `helpers/chrome.js` | Tiny DevTools-protocol driver over `--remote-debugging-pipe` |
 
 Browser tests find Chrome through `CHROME_PATH`, the usual macOS location,

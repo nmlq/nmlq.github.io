@@ -331,3 +331,31 @@ test('keyboard map: Z row then Q row, labels, black keys, octave limit', () => {
   assert.equal(N.maxOctave(3), 5);
   assert.equal(N.maxOctave(5), 3);
 });
+
+test('synthVoiceGroups: the shared synth voice settings, with per-app defaults', () => {
+  const groups = N.synthVoiceGroups();
+  assert.deepEqual(groups.map((g) => g.title),
+    ['Oscillator 1', 'Oscillator 2', 'Mixer', 'Filter', 'Filter envelope', 'Amp envelope', 'Modulation (LFO)']);
+  const defs = groups.flatMap((g) => g.params);
+  const keys = defs.map((d) => d.key);
+  assert.equal(new Set(keys).size, keys.length, 'keys are unique');
+  for (const k of [...N.SYNTH_VOICE_KEYS, ...N.SYNTH_GLOBAL_KEYS]) assert.ok(keys.includes(k), k);
+  for (const d of defs) {
+    if (d.options) assert.ok(d.options.some((o) => o[0] === d.value), `${d.key} default is an option`);
+    else assert.ok(d.value >= d.min && d.value <= d.max, `${d.key} default in range`);
+    if (d.log) assert.ok(d.min > 0, `${d.key} log knob needs min > 0`);
+  }
+  const byKey = Object.fromEntries(defs.map((d) => [d.key, d]));
+  assert.equal(byKey.osc1Wave.value, 'sawtooth');
+  assert.equal(byKey.cutoff.value, 1800);
+  assert.equal(byKey.osc1Wave.options, N.WAVES);
+  assert.equal(byKey.filterType.options, N.FILTER_TYPES);
+
+  // Overrides change only that call's copy.
+  const mine = N.synthVoiceGroups({ osc1Wave: 'triangle', cutoff: 2600 }).flatMap((g) => g.params);
+  assert.equal(mine.find((d) => d.key === 'osc1Wave').value, 'triangle');
+  assert.equal(mine.find((d) => d.key === 'cutoff').value, 2600);
+  assert.equal(N.synthVoiceGroups().flatMap((g) => g.params).find((d) => d.key === 'cutoff').value, 1800);
+  assert.equal(N.fmtRate(5), '5.00 Hz');
+  assert.equal(N.fmtRate(12), '12.0 Hz');
+});

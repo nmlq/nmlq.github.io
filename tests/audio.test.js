@@ -35,7 +35,7 @@ class FakeNode {
 
 class FakeSource extends FakeNode {
   start(t) { this.started = t; }
-  stop(t) { this.stopped = t; }
+  stop(t) { this.stopped = t === undefined ? "now" : t; }
 }
 
 class FakeContext {
@@ -55,6 +55,8 @@ class FakeContext {
   }
   createOscillator() { return this.track(new FakeSource(this, 'oscillator', { frequency: 440, detune: 0 })); }
   createBufferSource() { return this.track(new FakeSource(this, 'buffer-source')); }
+  createConstantSource() { return this.track(new FakeSource(this, 'constant-source', { offset: 1 })); }
+  createBiquadFilter() { return this.track(new FakeNode(this, 'biquad', { frequency: 350, Q: 1, detune: 0, gain: 0 })); }
   createBuffer(channels, length, sampleRate) {
     const data = Array.from({ length: channels }, () => new Float32Array(length));
     return { numberOfChannels: channels, length, sampleRate, getChannelData: (c) => data[c] };
@@ -79,7 +81,7 @@ const reaches = (from, to, seen = new Set()) => {
 
 test('nmlq.audio exposes the shared building blocks', () => {
   for (const name of ['createContext', 'resume', 'setParam', 'compressor', 'noiseBuffer', 'impulseBuffer',
-    'createSpace', 'createPluck', 'envStart', 'envRelease', 'installUnlock']) {
+    'createSpace', 'createPluck', 'createSynth', 'envStart', 'envRelease', 'installUnlock']) {
     assert.equal(typeof A[name], 'function', name);
   }
 });
@@ -257,4 +259,91 @@ test('envStart / envRelease schedule curves that match nmlq.adsrValue', () => {
   assert.deepEqual(a.events.slice(-3), [['cancel', 2], ['set', expected, 2], ['target', 0, 2, 0.08]]);
   assert.equal(e.stage, 'rel');
   assert.equal(e.level, expected);
+});
+
+// ---------- shared subtractive synth voice ----------
+
+const synthParams = (over) => {
+  const p = {};
+  N.loadDefaults(N.synthVoiceGroups().flatMap((g) => g.params), p);
+  return Object.assign(p, over);
+};
+
+test('createSynth: voice wiring, pitch in cents, settings applied', () => {
+  const ac = new FakeContext();
+  const out = ac.createGain();
+  const params = synthParams({ osc1Oct: 1, osc2Semi: 7, osc2Detune: 5, filterType: 'lowpass24' });
+  const s = A.createSynth(ac, { output: out, params });
+  assert.ok(reaches(s.output, out));
+  const v = s.voice(72, 0);
+  assert.equal(s.voices.length, 1);
+  assert.equal(v.pitch.offset.value, 300, 'C5 is 3 semitones above A4');
+  assert.ok(reaches(v.o1, out) && reaches(v.o2, out) && reaches(v.sub, out) && reaches(v.noise, out));
+  for (const o of v.oscs) assert.ok(v.pitch.outputs.includes(o.detune), 'pitch drives every oscillator');
+  assert.equal(v.o1.type, 'sawtooth');
+  assert.equal(v.o1.frequency.value, 880);
+  assert.equal(v.sub.frequency.value, 440, 'sub is an octave below osc 1');
+  assert.equal(v.o2.detune.value, 705);
+  assert.equal([v.fA.type, v.fB.type].join(), 'lowpass,lowpass', '24 dB uses both stages');
+  assert.equal(v.fA.frequency.value, params.cutoff);
+
+  params.filterType = 'highpass';
+  params.osc1Wave = 'square';
+  s.configureAll();
+  assert.equal([v.fA.type, v.fB.type].join(), 'highpass,allpass');
+  assert.equal(v.o1.type, 'square');
+  assert.equal(s.voice(60, 0, -1000).pitch.offset.value, -1000, 'a glide can start elsewhere');
+});
+
+test('createSynth: trigger / release follow the ADSR settings; kill frees everything', () => {
+  const ac = new FakeContext();
+  const freed = [];
+  const params = synthParams({ attack: 10, decay: 200, sustain: 50, release: 100, filterEnvAmt: 50 });
+  const s = A.createSynth(ac, { output: ac.createGain(), params, onFree: (v) => freed.push(v) });
+  const v = s.voice(69, 0);
+  s.trigger(v, 0, false);
+  assert.deepEqual(v.ampEnv, { stage: 'on', t: 0, from: 0, peak: 0.2, sustain: 0.1, a: 0.01, d: 0.2 });
+  assert.equal(v.filtEnv.peak, 0.5 * 5 * 1200);
+  ac.currentTime = 1;
+  s.release(v);
+  assert.equal(v.released, true);
+  assert.equal(v.ampEnv.stage, 'rel');
+  assert.equal(v.ampEnv.r, 0.1);
+  s.kill(v);
+  assert.equal(v.dead, true);
+  assert.deepEqual(s.voices, []);
+  assert.deepEqual(freed, [v]);
+  assert.deepEqual(v.amp.outputs, []);
+  for (const o of v.oscs) assert.ok(o.stopped !== undefined, 'oscillators stopped');
+});
+
+test('createSynth: makeRoom steals released voices first, then the oldest; play and stopAll', () => {
+  const ac = new FakeContext();
+  const s = A.createSynth(ac, { output: ac.createGain(), params: synthParams() });
+  const a = s.voice(60, 0), b = s.voice(62, 1), c = s.voice(64, 2);
+  s.release(b);
+  s.makeRoom(3);
+  assert.deepEqual([a.stolen, b.stolen, c.stolen], [false, true, false], 'released voice goes first');
+  s.makeRoom(2);
+  assert.deepEqual([a.stolen, c.stolen], [true, false], 'then the oldest');
+  const p = s.play(67, 0.5, 8);
+  assert.equal(p.ampEnv.stage, 'on', 'play triggers the envelopes');
+  s.stopAll();
+  assert.ok(s.voices.every((v) => v.stolen));
+  for (const v of s.voices.slice()) s.kill(v);
+});
+
+test('createSynth.applyGlobal sets LFO, tremolo and extra vibrato / bend', () => {
+  const ac = new FakeContext();
+  const params = synthParams({ lfoWave: 'triangle', lfoRate: 3, vibrato: 10, tremolo: 40, lfoFilter: 50 });
+  const s = A.createSynth(ac, { params });
+  s.applyGlobal(true, { vibrato: 30, bend: 200 });
+  const lfo = ac.created.find((n) => n.kind === 'oscillator');
+  assert.equal(lfo.type, 'triangle');
+  assert.equal(lfo.frequency.value, 3);
+  assert.equal(s.output.gain.value, 0.8, 'tremolo base gain is 1 − depth/2');
+  const bend = ac.created.find((n) => n.kind === 'constant-source');
+  assert.equal(bend.offset.value, 200);
+  const gains = lfo.outputs.map((g) => g.gain.value);
+  assert.deepEqual(gains, [40, 1800, 0.2], 'vibrato + extra (cents), filter (cents), tremolo depth');
 });
