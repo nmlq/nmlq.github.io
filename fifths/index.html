@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fifths · nmlq</title>
+  <style>
+    :root {
+      --bg: #0d1017;
+      --fg: #e6e9ef;
+      --muted: #8a93a6;
+      --panel: rgba(20, 24, 34, 0.82);
+      --border: rgba(255, 255, 255, 0.09);
+      --accent: #7aa2ff;
+      --chord-bg: rgba(255, 255, 255, 0.04);
+      --lit-l: 58%;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f5f6f9;
+        --fg: #1b1f2a;
+        --muted: #5d6578;
+        --panel: rgba(255, 255, 255, 0.88);
+        --border: rgba(0, 0, 0, 0.09);
+        --accent: #3a63d8;
+        --chord-bg: rgba(255, 255, 255, 0.9);
+        --lit-l: 52%;
+      }
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--fg);
+      font: 13px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    /* ----- the wheel ----- */
+    .stage {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+    }
+    @media (min-width: 900px) {
+      body.panel-open .stage { padding-left: 322px; }
+      body.panel-open .wheel {
+        width: min(calc(100vw - 354px), calc(100vh - 32px), 680px);
+        width: min(calc(100vw - 354px), calc(100dvh - 32px), 680px);
+      }
+    }
+    .wheel {
+      position: relative;
+      width: min(calc(100vw - 32px), calc(100vh - 32px), 680px);
+      width: min(calc(100vw - 32px), calc(100dvh - 32px), 680px);
+      aspect-ratio: 1;
+      container-type: inline-size;
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    @media (max-width: 640px) {
+      /* leave room for the collapsed panel header */
+      .stage { padding-top: 72px; }
+      .wheel { width: min(calc(100vw - 32px), calc(100vh - 88px)); width: min(calc(100vw - 32px), calc(100dvh - 88px)); }
+    }
+    .wheel svg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .ring { fill: none; stroke: var(--border); stroke-width: 0.3; }
+    .dot {
+      fill: hsla(var(--hue), 70%, var(--lit-l), calc(0.18 + 0.82 * var(--glow)));
+    }
+    #shape {
+      fill: hsla(var(--hue, 220), 75%, var(--lit-l), calc(0.12 * var(--glow, 0)));
+      stroke: hsla(var(--hue, 220), 75%, var(--lit-l), calc(0.9 * var(--glow, 0)));
+      stroke-width: 0.6;
+      stroke-linejoin: round;
+    }
+    .wheel.hide-shape #shape, .wheel.hide-shape .dot { display: none; }
+
+    .chord {
+      position: absolute;
+      transform: translate(-50%, -50%) scale(calc(1 + 0.06 * var(--glow)));
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.1em;
+      padding: 0;
+      border-radius: 50%;
+      font: inherit;
+      color: var(--fg);
+      cursor: pointer;
+      background-color: var(--chord-bg);
+      background-image: linear-gradient(
+        hsla(var(--hue), 75%, var(--lit-l), calc(0.1 + 0.8 * var(--glow))),
+        hsla(var(--hue), 75%, var(--lit-l), calc(0.1 + 0.8 * var(--glow))));
+      border: 1.5px solid hsla(var(--hue), 70%, var(--lit-l), calc(0.45 + 0.55 * var(--glow)));
+      box-shadow: 0 0 calc(var(--glow) * 4cqw) hsla(var(--hue), 85%, 60%, calc(0.7 * var(--glow)));
+      -webkit-tap-highlight-color: transparent;
+    }
+    .chord:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .chord.major { width: 14%; height: 14%; font-size: 3.6cqw; }
+    .chord.minor { width: 10.5%; height: 10.5%; font-size: 2.7cqw; }
+    .chord .name { font-weight: 650; line-height: 1; }
+    .chord .key {
+      font-size: 0.55em;
+      line-height: 1;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .wheel.hide-keys .chord .key { display: none; }
+
+    .center {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 22%;
+      text-align: center;
+      pointer-events: none;
+    }
+    .center .now {
+      display: block;
+      font-size: 5.5cqw;
+      font-weight: 650;
+      line-height: 1.1;
+      min-height: 1.1em;
+    }
+    .center .notes {
+      display: block;
+      font-size: 2.2cqw;
+      color: var(--muted);
+      min-height: 1.4em;
+    }
+    .wheel.hide-notes .center .notes { visibility: hidden; }
+
+    /* ----- settings panel (same look as the graph app) ----- */
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      width: min(290px, calc(100vw - 32px));
+      max-height: calc(100vh - 32px);
+      display: flex;
+      flex-direction: column;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      user-select: none;
+      z-index: 2;
+    }
+    .panel header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+    }
+    .panel .body {
+      overflow-y: auto;
+      padding: 0 12px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .panel.collapsed .body { display: none; }
+    @media (max-width: 640px) {
+      .panel { max-height: 60vh; }
+    }
+
+    .buttons { display: flex; gap: 6px; flex-wrap: wrap; }
+    button.btn, a.btn {
+      font: inherit;
+      text-decoration: none;
+      color: var(--fg);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px 9px;
+      cursor: pointer;
+    }
+    button.btn:hover, a.btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .section-title {
+      margin: 12px 0 4px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .row { padding: 5px 0; }
+    .row.disabled .label-text, .row.disabled .value { opacity: 0.45; }
+    .row.disabled input[type=range] { opacity: 0.35; }
+    .row-head { display: flex; align-items: center; gap: 6px; }
+    .row-head label { display: flex; align-items: center; gap: 6px; flex: 1; cursor: pointer; }
+    .row .value {
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+      min-width: 3.5em;
+      text-align: right;
+    }
+    input[type=checkbox] { accent-color: var(--accent); margin: 0; }
+    input[type=range] { width: 100%; margin: 4px 0 0; accent-color: var(--accent); }
+    select {
+      font: inherit;
+      color: var(--fg);
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 3px 6px;
+      max-width: 60%;
+    }
+    select option { background: var(--bg); color: var(--fg); }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="wheel" id="wheel">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="ring" cx="50" cy="50" r="41"/>
+        <circle class="ring" cx="50" cy="50" r="27.5"/>
+        <circle class="ring" cx="50" cy="50" r="16"/>
+        <polygon id="shape" points=""/>
+        <g id="dots"></g>
+      </svg>
+      <div class="center" aria-live="polite">
+        <span class="now" id="now"></span>
+        <span class="notes" id="notes"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel">
+    <header>
+      <div class="buttons">
+        <a class="btn" href="../" aria-label="Back to all items">←</a>
+        <button class="btn" id="stop">Stop</button>
+        <button class="btn" id="defaults">Defaults</button>
+      </div>
+      <button class="btn" id="collapse" aria-expanded="true">Hide</button>
+    </header>
+    <div class="body" id="controls"></div>
+  </div>
+
+  <script src="fifths.js"></script>
+</body>
+</html>

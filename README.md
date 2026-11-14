@@ -1,5 +1,36 @@
 # nmlq.github.io
 
+A collection of small interactive musical toys. The landing page
+(`index.html`) is a grid of items; each item lives in its own folder.
+
+| Item | Folder |
+| --- | --- |
+| Graph | `graph/` |
+| Fifths | `fifths/` |
+
+To add an item, create a folder with its own `index.html`, then copy one
+`<a class="item">` block in the root `index.html` and point it at the folder.
+
+## Fifths
+
+A playable circle of fifths. The outer ring holds the 12 major chords and the
+inner ring their relative minors. Click or tap a chord, slide across the wheel
+to play each chord you pass, or use the keyboard: the number row (`1`–`0`,
+`-`, `=`) plays the majors clockwise from C and the `Q` row (`Q`–`P`, `[`,
+`]`) plays the minors. `Esc` stops all sound. Each chord lights up as it
+plays, and the small clock in the middle joins the chord's notes into a shape.
+
+It uses the same synth as Graph (waveform, envelope, brightness, chorus,
+shimmer, vibrato, reverb, echo), plus chord type (triads, 7ths, add 9, sus,
+power), voicing, bass note, strum, "stop when released", and an auto-play
+mode that walks the circle or plays I–V–vi–IV style progressions in the key
+of the last chord you played, as chords or arpeggios.
+
+Files: `fifths/index.html` (page and styles) and `fifths/fifths.js` (synth,
+chords, wheel, input, settings).
+
+## Graph
+
 An interactive, physics-driven **8-pointed star** built from a fully connected graph.
 
 Eight nodes sit evenly spaced around a circle. Every node is joined to every
@@ -134,11 +165,12 @@ start collapsed; tap **Show** to open them.
 
 ### Files
 
-- `index.html` — page, styles, and on-screen controls
-- `lib.js` — graph construction, physics simulation, sound synthesis, melody, rendering, and input
+- `index.html` — landing page with the grid of items
+- `graph/index.html` — the Graph page, styles, and on-screen controls
+- `graph/graph.js` — graph construction, physics simulation, sound synthesis, melody, rendering, and input
 
 ### Running
 
-Open `index.html` in a browser, or serve the folder with any static server,
+Open `index.html` in a browser (or `graph/index.html` directly), or serve the folder with any static server,
 e.g. `python3 -m http.server`. It's also served by GitHub Pages at the repo's
 `github.io` address.
