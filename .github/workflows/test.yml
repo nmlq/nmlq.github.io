@@ -25,6 +25,9 @@ jobs:
       - name: Show Chrome version
         run: google-chrome --version
 
+      - name: Cache-busting stamps are current
+        run: node scripts/stamp.js --check
+
       - name: Unit and repository tests
         run: npm run test:unit
 

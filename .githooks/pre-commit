@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs the test suite before every commit. Enable once per clone with:
+# Updates cache-busting stamps, then runs the test suite, before every commit. Enable once per clone with:
 #   npm run hooks        (or: git config core.hooksPath .githooks)
 # Skip in an emergency with: git commit --no-verify
 #
@@ -12,6 +12,16 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
+
+# Refresh the cache-busting ?v= stamps (scripts/stamp.js) so a deploy never
+# mixes new pages with stale cached files, and include them in this commit.
+if ! stamped=$(node scripts/stamp.js --list); then
+  echo "pre-commit: a page references a file that doesn't exist; commit aborted" >&2
+  exit 1
+fi
+for f in $stamped; do
+  git add -- "$f" && echo "pre-commit: updated stamps in $f"
+done
 
 echo "pre-commit: running tests…"
 if ! node --test tests/*.test.js >"${TMPDIR:-/tmp}/nmlq-pre-commit.log" 2>&1; then

@@ -19,6 +19,8 @@ shared/nmlq.css       theme tokens, shared control styles, keyboard-instrument l
 <app>/index.html      page markup + app-specific CSS
 <app>/<app>.js        app behaviour, an IIFE using window.nmlq
 tests/                node:test suites (unit, repo checks, headless-Chrome browser tests)
+scripts/stamp.js      adds ?v=<content hash> to every local asset URL (cache-busting)
+favicon.ico           site icon (shared/favicon.svg for modern browsers)
 .githooks/pre-commit  runs the tests before each commit
 .github/workflows/    CI: runs the tests on every pull request
 .claude/              this guide and the reference docs below
@@ -65,5 +67,9 @@ Current apps: `graph/`, `fifths/`, `drummer/`, `synth/`, `granular/`.
 - Every app has a back button (`<a class="btn" href="../">←</a>`).
 - When adding or changing an app, update its card in `index.html`, its
   section in `README.md`, and the browser test for it.
+- Asset URLs in HTML carry `?v=<content hash>` stamps so GitHub Pages'
+  10-minute cache can't mix new pages with stale shared files. Never edit
+  them by hand: `npm run stamp` (the pre-commit hook does it, and tests/CI
+  fail on stale stamps).
 - Run `npm test` before committing (the pre-commit hook does this once
   enabled with `npm run hooks`). CI runs the same tests on pull requests.

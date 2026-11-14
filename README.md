@@ -57,6 +57,8 @@ drummer/              index.html, drummer.js
 synth/                index.html, synth.js
 granular/             index.html, granular.js
 tests/                unit, repository and headless-browser tests
+scripts/stamp.js      cache-busting ?v= stamps for the pages' script and style URLs
+favicon.ico           site icon
 .githooks/pre-commit  runs the tests before each commit
 .github/workflows/    runs the tests on every pull request
 .claude/              project guide and reference docs (shared library API,
@@ -67,11 +69,17 @@ Each app is one HTML page and one plain JavaScript file built on the shared
 library in `shared/`. The library is plain scripts (no modules, no build
 step), so every page still opens straight from disk.
 
-## Running
+## Running and deploying
 
 Open `index.html` (or any `<app>/index.html`) directly in a browser, or serve
 the repo root with any static server, e.g. `python3 -m http.server`. It's
 also published by GitHub Pages at the repo's `github.io` address.
+
+GitHub Pages lets browsers cache files for 10 minutes, so every script and
+stylesheet URL in the pages carries a `?v=` stamp with a hash of the file's
+contents: after a deploy, changed files get new URLs and a page can never
+load a mix of old and new code. `npm run stamp` updates the stamps; the
+pre-commit hook does it for you, and the tests fail if one is stale.
 
 ## Testing
 

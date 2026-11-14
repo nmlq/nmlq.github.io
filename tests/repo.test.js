@@ -33,8 +33,9 @@ test('shared library files exist and parse', () => {
 for (const app of APPS) {
   test(`${app}: page loads the shared library in order, then its own script`, () => {
     const html = read(`${app}/index.html`);
-    assert.match(html, /<link rel="stylesheet" href="\.\.\/shared\/nmlq\.css">/);
-    const scripts = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map((m) => m[1]);
+    assert.match(html, /<link rel="stylesheet" href="\.\.\/shared\/nmlq\.css\?v=[0-9a-f]{10}">/);
+    assert.match(html, /<link rel="icon" href="\.\.\/shared\/favicon\.svg\?v=[0-9a-f]{10}" type="image\/svg\+xml">/);
+    const scripts = [...html.matchAll(/<script src="([^"?]+)\?v=[0-9a-f]{10}"><\/script>/g)].map((m) => m[1]);
     assert.deepEqual(scripts, [...SHARED_SCRIPTS.map((f) => '../shared/' + f), `${app}.js`]);
     for (const s of scripts) assert.ok(exists(path.join(app, s)), `${s} referenced by ${app} exists`);
   });
@@ -89,7 +90,7 @@ test('every landing-page card points at an existing app', () => {
   const index = read('index.html');
   const hrefs = [...index.matchAll(/<a class="item" href="([^"]+)\/">/g)].map((m) => m[1]);
   assert.deepEqual(hrefs.slice().sort(), APPS);
-  assert.match(index, /<link rel="stylesheet" href="shared\/nmlq\.css">/);
+  assert.match(index, /<link rel="stylesheet" href="shared\/nmlq\.css\?v=[0-9a-f]{10}">/);
 });
 
 test('shared CSS defines every theme token for dark and light', () => {
@@ -104,5 +105,61 @@ test('shared CSS defines every theme token for dark and light', () => {
 test('project docs exist', () => {
   for (const f of ['.claude/CLAUDE.md', '.claude/docs/style.md', '.claude/docs/audio.md', '.claude/docs/parameters.md', '.claude/docs/new-app.md']) {
     assert.ok(exists(f), f);
+  }
+});
+
+// ---------- deployment (GitHub Pages) ----------
+
+const stamp = require('../scripts/stamp.js');
+
+test('every local asset URL carries a current content-hash stamp', () => {
+  const { problems } = stamp.run(true);
+  assert.deepEqual(problems, [], 'run `npm run stamp`');
+  // Nothing local is left unstamped.
+  for (const page of stamp.htmlFiles()) {
+    const html = read(page);
+    for (const m of html.matchAll(/\b(?:src|href)="((?![a-z]+:|\/\/|#)[^"]+\.(?:js|css|svg|ico)(?:\?[^"]*)?)"/g)) {
+      assert.match(m[1], /\?v=[0-9a-f]{10}$/, `${page}: ${m[1]}`);
+    }
+  }
+});
+
+test('stampHtml adds, refreshes and leaves alone the right references', () => {
+  const coreHash = stamp.hashFile(path.join(ROOT, 'shared/core.js'));
+  const html = [
+    '<script src="../shared/core.js"></script>',
+    '<script src="../shared/core.js?v=0000000000"></script>',
+    `<script src="../shared/core.js?v=${coreHash}"></script>`,
+    '<script src="https://cdn.example.com/x.js"></script>',
+    '<a class="btn" href="../">←</a>',
+    '<a href="#top">top</a>',
+  ].join('\n');
+  const { html: out, refs } = stamp.stampHtml(html, 'synth/index.html');
+  const lines = out.split('\n');
+  assert.equal(lines[0], `<script src="../shared/core.js?v=${coreHash}"></script>`);
+  assert.equal(lines[1], lines[0]);
+  assert.equal(lines[2], lines[0]);
+  assert.equal(lines[3], '<script src="https://cdn.example.com/x.js"></script>', 'external URLs untouched');
+  assert.equal(lines[4], '<a class="btn" href="../">←</a>', 'page links untouched');
+  assert.equal(lines[5], '<a href="#top">top</a>');
+  assert.deepEqual(refs.map((r) => r.stale), [true, true, false]);
+  const missing = stamp.stampHtml('<script src="nope.js"></script>', 'synth/index.html');
+  assert.equal(missing.refs[0].missing, true);
+});
+
+test('the site has a favicon (avoids a 404 on every page)', () => {
+  assert.ok(exists('favicon.ico'));
+  assert.ok(exists('shared/favicon.svg'));
+  const ico = fs.readFileSync(path.join(ROOT, 'favicon.ico'));
+  assert.deepEqual([...ico.subarray(0, 4)], [0, 0, 1, 0], 'ICO header');
+  assert.match(read('index.html'), /<link rel="icon" href="shared\/favicon\.svg\?v=[0-9a-f]{10}" type="image\/svg\+xml">/);
+});
+
+test('nothing GitHub Pages (Jekyll) would drop is needed by a page', () => {
+  // Jekyll skips files and folders starting with "_" or "." unless configured.
+  for (const page of stamp.htmlFiles()) {
+    for (const m of read(page).matchAll(stamp.REF)) {
+      assert.doesNotMatch(m[2], /(^|\/)[_.][^./]/, `${page} references ${m[2]}`);
+    }
   }
 });

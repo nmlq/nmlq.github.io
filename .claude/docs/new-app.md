@@ -7,8 +7,10 @@
      `<style>` with only app-specific rules (and app-specific tokens with
      light-mode values — never redefine the shared tokens).
    - A back link `<a class="btn" href="../" aria-label="Back to all items">←</a>`.
+   - `<link rel="icon" href="../shared/favicon.svg" type="image/svg+xml">`.
    - At the end of `<body>`: `../shared/core.js`, `../shared/audio.js`,
-     `../shared/ui.js`, then `<name>.js`.
+     `../shared/ui.js`, then `<name>.js`. Write plain URLs; `npm run stamp`
+     adds the `?v=` cache-busting hashes.
 3. In the JS:
    - `(function () { 'use strict'; const N = window.nmlq; … })();` with a
      header comment explaining what the app is and how its sound works.

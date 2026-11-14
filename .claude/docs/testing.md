@@ -31,10 +31,22 @@ for debugging. Synthetic key events that a control
 should consume must be `cancelable: true`, or the app's window handler sees
 them too.
 
+## Cache-busting stamps
+
+GitHub Pages serves every file with `Cache-Control: max-age=600`, so right
+after a deploy a browser can combine a new page with old cached shared
+files and fail on load (e.g. a new `granular.js` calling a function an old
+`shared/ui.js` doesn't have). `scripts/stamp.js` appends `?v=<first 10 hex
+of the file's SHA-1>` to every local script, stylesheet and icon URL in the
+HTML pages, so any changed file gets a new URL. `npm run stamp` updates
+them, `node scripts/stamp.js --check` reports stale ones, and
+`tests/repo.test.js` fails if any are missing or stale.
+
 ## Pre-commit hook
 
-`.githooks/pre-commit` runs `node --test tests/*.test.js` and aborts the
-commit on failure. Enable it once per clone:
+`.githooks/pre-commit` refreshes the stamps (staging only the pages it
+changed), then runs `node --test tests/*.test.js` and aborts the commit on
+failure. Enable it once per clone:
 
 ```sh
 npm run hooks          # = git config core.hooksPath .githooks
@@ -46,5 +58,5 @@ emergency with `git commit --no-verify`.
 ## CI
 
 `.github/workflows/test.yml` runs on every pull request (and manually via
-*Run workflow*): Node 22 on `ubuntu-latest`, unit + repo tests, then browser
+*Run workflow*): Node 22 on `ubuntu-latest`, a stamp check, unit + repo tests, then browser
 tests with the runner's Google Chrome and `REQUIRE_BROWSER=1`.
