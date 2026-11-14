@@ -10,10 +10,12 @@ generated live with the Web Audio API (no audio files).
 ```
 index.html            landing page: a grid of cards, one per app
 README.md             user-facing description of every app
-shared/core.js        pure helpers (music maths, formatters, params, storage, envelopes, knob maths)
+shared/core.js        pure helpers (music maths, formatters, params, storage, envelopes, knob maths,
+                      filter Q, grain windows, sample peaks/trim/normalise, WAV encoding, key map)
 shared/audio.js       Web Audio blocks (context, iOS unlock, reverb/echo, pluck voices, ADSR)
-shared/ui.js          DOM components (knob, knob groups, slider panel, collapsible panel)
-shared/nmlq.css       theme tokens and shared control styles
+shared/ui.js          DOM components (knob, knob groups with on/off switches, slider panel,
+                      collapsible panel, piano keyboard, bend/mod strips, oscilloscope)
+shared/nmlq.css       theme tokens, shared control styles, keyboard-instrument layout
 <app>/index.html      page markup + app-specific CSS
 <app>/<app>.js        app behaviour, an IIFE using window.nmlq
 tests/                node:test suites (unit, repo checks, headless-Chrome browser tests)
@@ -22,7 +24,7 @@ tests/                node:test suites (unit, repo checks, headless-Chrome brows
 .claude/              this guide and the reference docs below
 ```
 
-Current apps: `graph/`, `fifths/`, `drummer/`, `synth/`.
+Current apps: `graph/`, `fifths/`, `drummer/`, `synth/`, `granular/`.
 
 ## Reference docs (read before changing or adding an app)
 

@@ -250,3 +250,84 @@ test('isTypingTarget: text fields yes, buttons and checkboxes no', () => {
   assert.equal(N.isTypingTarget(null), false);
   assert.equal(N.isTypingTarget({ tagName: 'DIV', isContentEditable: true }), true);
 });
+
+test('FILTER_TYPES and filterQ (dB for low/high-pass, unitless for band-pass/notch)', () => {
+  assert.deepEqual(N.FILTER_TYPES.map((f) => f[0]), ['lowpass', 'lowpass24', 'highpass', 'bandpass', 'notch']);
+  close(N.filterQ('lowpass', 0), -1);
+  close(N.filterQ('lowpass', 100), 20);
+  close(N.filterQ('highpass', 50), 9.5);
+  close(N.filterQ('bandpass', 0), 0.5);
+  close(N.filterQ('notch', 100), 0.5 * Math.pow(2, 5.3));
+});
+
+test('grainWindow: every shape starts and ends at 0 and stays within 0..1', () => {
+  assert.deepEqual(N.GRAIN_SHAPES.map((s) => s[0]), ['hann', 'triangle', 'tukey', 'gauss', 'perc', 'reverse']);
+  for (const [shape] of N.GRAIN_SHAPES) {
+    const w = N.grainWindow(shape, 257);
+    assert.equal(w.length, 257);
+    assert.equal(w[0], 0, shape);
+    assert.equal(w[256], 0, shape);
+    for (const v of w) assert.ok(v >= 0 && v <= 1, `${shape} ${v}`);
+    assert.ok(Math.max(...w) > 0.8, `${shape} reaches near full level`);
+  }
+  close(N.grainWindow('hann', 257)[128], 1);
+  close(N.grainWindow('triangle', 257)[128], 1);
+  assert.equal(N.grainWindow('tukey', 257)[128], 1);
+  const perc = N.grainWindow('perc', 101), rev = N.grainWindow('reverse', 101);
+  assert.ok(perc.indexOf(Math.max(...perc)) < 20, 'percussive peaks early');
+  assert.ok(rev.indexOf(Math.max(...rev)) > 80, 'reverse percussive peaks late');
+  assert.equal(N.grainWindow('nope', 2).length, 2, 'unknown shapes fall back to Hann');
+});
+
+test('computePeaks gives min / max per column', () => {
+  const data = new Float32Array([0, 0.5, -0.25, 1, -1, 0.1, 0.2, 0.3]);
+  const p = N.computePeaks(data, 4);
+  assert.deepEqual([...p.max], [0.5, 1, 0.10000000149011612, 0.30000001192092896]);
+  assert.deepEqual([...p.min], [0, -0.25, -1, 0]);
+  assert.equal(N.computePeaks(new Float32Array(3), 10).max.length, 10, 'more columns than samples');
+});
+
+test('peakOf, trimBounds and normalize', () => {
+  const d = new Float32Array([0, 0.001, 0, 0.5, -0.8, 0.3, 0.002, 0]);
+  close(N.peakOf(d), 0.8, 1e-6);
+  assert.deepEqual(N.trimBounds(d, 0.01), [3, 6]);
+  assert.deepEqual(N.trimBounds(d, 0.01, 2), [1, 8]);
+  assert.deepEqual(N.trimBounds(new Float32Array(10), 0.01), [0, 0], 'silence');
+  const n = N.normalize(d, 0.9);
+  close(N.peakOf(n), 0.9, 1e-6);
+  close(n[3] / n[4], d[3] / d[4], 1e-6);
+  assert.notEqual(n, d, 'returns a copy');
+  assert.deepEqual([...N.normalize(new Float32Array(3))], [0, 0, 0]);
+});
+
+test('encodeWav writes 16-bit mono PCM and clips to ±1', () => {
+  const buf = N.encodeWav(new Float32Array([0, 1, -1, 0.5, 2, -2]), 48000);
+  const v = new DataView(buf);
+  const str = (o, n) => String.fromCharCode(...new Uint8Array(buf, o, n));
+  assert.equal(str(0, 4), 'RIFF');
+  assert.equal(str(8, 4), 'WAVE');
+  assert.equal(v.getUint32(24, true), 48000);
+  assert.equal(v.getUint32(28, true), 96000);
+  assert.equal(v.getUint16(34, true), 16);
+  assert.equal(v.getUint32(40, true), 12);
+  assert.equal(buf.byteLength, 56);
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((i) => v.getInt16(44 + i * 2, true)), [0, 32767, -32768, 16383, 32767, -32768]);
+});
+
+test('keyboard map: Z row then Q row, labels, black keys, octave limit', () => {
+  assert.equal(N.KEYMAP.KeyZ, 0);
+  assert.equal(N.KEYMAP.KeyM, 11);
+  assert.equal(N.KEYMAP.KeyQ, 12);
+  assert.equal(N.KEYMAP.Comma, 12);
+  assert.equal(N.KEYMAP.BracketRight, 31);
+  assert.equal(N.KEY_LABELS[0], 'Z');
+  assert.equal(N.KEY_LABELS[12], 'Q', 'the Q row labels the second octave');
+  assert.equal(N.KEY_LABELS[30], '=');
+  assert.deepEqual(N.BLACK_KEYS, [1, 3, 6, 8, 10]);
+  for (const [code, i] of Object.entries(N.KEYMAP)) {
+    const isBlack = N.BLACK_KEYS.includes(i % 12);
+    if (/^Digit|^Key[SDGHJL]$|^Semicolon$|^Equal$/.test(code)) assert.ok(isBlack, `${code} is a black key`);
+  }
+  assert.equal(N.maxOctave(3), 5);
+  assert.equal(N.maxOctave(5), 3);
+});

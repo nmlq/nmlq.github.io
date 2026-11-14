@@ -58,7 +58,7 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
 
   await t.test('landing page lists every app and uses the shared theme', () => withPage('index.html', async (page) => {
     const cards = await page.eval(`[...document.querySelectorAll('a.item')].map((a) => a.getAttribute('href'))`);
-    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/']);
+    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/', 'granular/']);
     const accent = await page.eval(`getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()`);
     assert.match(accent, /^#[0-9a-f]{6}$/i);
   }));
@@ -95,6 +95,19 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
       out.groups = { titles: box.querySelectorAll('.group-title').length, changes, select: sel.value,
         knobValue: box.querySelector('.knob').getAttribute('aria-valuenow') };
 
+      // a group with an on/off switch
+      const fxBox = document.body.appendChild(document.createElement('div'));
+      const fx = { echoOn: false, echo: 30 }, fxChanges = [];
+      const fxg = N.ui.buildKnobGroups(fxBox, [{ title: 'Echo', toggle: 'echoOn', params: [
+        { key: 'echo', label: 'Mix', min: 0, max: 100, step: 1, value: 30 }] }],
+        { values: fx, onInput: (key, v) => { fx[key] = v; fxChanges.push(key + '=' + v); } });
+      const group = fxBox.querySelector('.group'), sw = fxBox.querySelector('.group-toggle input');
+      const offAtStart = group.classList.contains('off');
+      sw.click();
+      const onAfterClick = !group.classList.contains('off');
+      fxg.sync({ echoOn: false });
+      out.toggle = { offAtStart, onAfterClick, fxChanges, offAfterSync: group.classList.contains('off'), checked: sw.checked };
+
       // slider panel with a toggleable slider
       const panelBox = document.body.appendChild(document.createElement('div'));
       const defs = [{ section: 'S' }, { key: 'on', label: 'On', bool: true },
@@ -126,6 +139,7 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
     assert.deepEqual(r.knobSeen, [6, 'change:6', 10, 'change:10', 2, 'change:2']);
     assert.deepEqual(r.knobAria, ['slider', '7']);
     assert.deepEqual(r.groups, { titles: 1, changes: ['w=square', 'lvl=49'], select: 'triangle', knobValue: '10' });
+    assert.deepEqual(r.toggle, { offAtStart: true, onAfterClick: true, fxChanges: ['echoOn=true'], offAfterSync: true, checked: false });
     assert.deepEqual(r.panel, { rows: 2, changed: ['rev', 'rev'], enabled: false, disabled: true, value: '60%', rev: 60, synced: ['10', '10%'] });
     assert.deepEqual(r.collapse, { afterClick: [true, 'Show'], states: [true, false], text: 'Hide' });
   }));
@@ -251,8 +265,118 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
     });
   }));
 
+  await t.test('granular: demo plays grains, effects switch, HUD, recording, slots', () => withPage('granular/index.html', async (page) => {
+    const r = await page.eval(`(async () => {
+      const out = {};
+      const hud = document.getElementById('hud');
+      const slot = (i) => document.querySelectorAll('.slot')[i];
+      const knob = (label) => [...document.querySelectorAll('.knob')].find((k) => k.getAttribute('aria-label') === label);
+      const turn = (label, key, times) => { for (let i = 0; i < (times || 1); i++) knob(label).dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })); };
+      out.keys = document.querySelectorAll('.key').length;
+      out.demo = slot(0).textContent;
+
+      // Play a chord on the demo sample: grains are spawned and drawn.
+      __t.key('keydown', 'KeyZ'); __t.key('keydown', 'KeyC'); __t.key('keydown', 'KeyB');
+      out.down = __t.labels('.key.down');
+      await __t.wait(500);
+      out.spawned = +hud.dataset.spawned;
+      out.liveGrains = +hud.dataset.grains;
+      __t.key('keyup', 'KeyZ'); __t.key('keyup', 'KeyC'); __t.key('keyup', 'KeyB');
+
+      // Every effect switch, plus extreme grain settings.
+      const switches = [...document.querySelectorAll('.group-toggle input')];
+      out.effects = switches.map((s) => s.closest('.group-toggle').textContent);
+      switches.forEach((s) => s.click());
+      out.offGroups = document.querySelectorAll('.group.off').length;
+      turn('Reverse', 'End'); turn('Pitch spray', 'PageUp', 3); turn('Spray', 'PageUp', 5);
+      turn('Size', 'Home'); turn('Density', 'End'); turn('Scan speed', 'PageUp', 2);
+      const windowSel = [...document.querySelectorAll('.field')].find((f) => f.textContent.includes('Window')).querySelector('select');
+      windowSel.value = 'perc'; windowSel.dispatchEvent(new Event('change'));
+      const before = +hud.dataset.spawned;
+      __t.key('keydown', 'KeyQ'); await __t.wait(400); __t.key('keyup', 'KeyQ');
+      out.moreGrains = +hud.dataset.spawned > before;
+      switches.forEach((s) => s.click());
+
+      // Click the display at 80%: the position knob follows.
+      const r = hud.getBoundingClientRect();
+      hud.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 5, bubbles: true, clientX: r.left + r.width * 0.8, clientY: r.top + r.height / 2 }));
+      hud.dispatchEvent(new PointerEvent('pointerup', { pointerId: 5, bubbles: true }));
+      out.position = knob('Position').getAttribute('aria-valuenow');
+
+      // Freeze, mono, octave.
+      document.getElementById('freeze').click();
+      out.freeze = document.getElementById('freeze').getAttribute('aria-pressed');
+      document.getElementById('mono').click();
+      __t.key('keydown', 'KeyZ'); __t.key('keydown', 'KeyX'); out.mono = __t.labels('.key.down');
+      __t.key('keyup', 'KeyX'); __t.key('keyup', 'KeyZ');
+      document.getElementById('poly').click();
+      __t.press('ArrowRight'); out.octave = document.getElementById('oct-range').textContent; __t.press('ArrowLeft');
+
+      // Recording. Headless Chrome can't always open even a fake microphone,
+      // so stand in for it: first a refusal, then a stream from an oscillator.
+      slot(1).click();
+      const realGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+      navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException('denied', 'NotAllowedError'));
+      document.getElementById('record').click();
+      await __t.wait(50);
+      out.denied = document.getElementById('status').textContent;
+      navigator.mediaDevices.getUserMedia = async () => {
+        const ac2 = new AudioContext();
+        const osc = ac2.createOscillator(), g = ac2.createGain(), dest = ac2.createMediaStreamDestination();
+        g.gain.value = 0.5;
+        osc.connect(g).connect(dest);
+        osc.start();
+        return dest.stream;
+      };
+      out.emptyText = slot(1).textContent;
+      document.getElementById('record').click();
+      for (let i = 0; i < 40 && document.getElementById('record').getAttribute('aria-pressed') !== 'true'; i++) await __t.wait(50);
+      out.recording = document.getElementById('record').getAttribute('aria-pressed');
+      await __t.wait(1600);
+      document.getElementById('record').click();
+      out.recorded = slot(1).textContent;
+      out.status = document.getElementById('status').textContent;
+      out.recPressed = document.getElementById('record').getAttribute('aria-pressed');
+      navigator.mediaDevices.getUserMedia = realGUM;
+      __t.key('keydown', 'KeyV'); await __t.wait(300); __t.key('keyup', 'KeyV');
+      out.recGrains = +hud.dataset.spawned;
+
+      // Clear it, then the demo button refills it.
+      document.getElementById('clear').click();
+      out.cleared = slot(1).textContent;
+      document.getElementById('demo').click();
+      out.refilled = slot(1).textContent;
+      document.getElementById('defaults').click();
+      out.reverseReset = knob('Reverse').getAttribute('aria-valuenow');
+      document.getElementById('panic').click();
+      return out;
+    })()`);
+    assert.equal(r.keys, 37);
+    assert.equal(r.demo, '1 · Demo');
+    assert.equal(r.down, 'C3,E3,G3');
+    assert.ok(r.spawned > 10, `grains spawned: ${r.spawned}`);
+    assert.ok(r.liveGrains > 0, 'grains are drawn on the display');
+    assert.deepEqual(r.effects, ['Filter', 'Drive', 'Echo', 'Reverb']);
+    assert.equal(r.offGroups, 2, 'filter and reverb switched off, drive and echo on');
+    assert.equal(r.moreGrains, true);
+    assert.equal(r.position, '80');
+    assert.equal(r.freeze, 'true');
+    assert.equal(r.mono, 'C3,D3');
+    assert.equal(r.octave, 'C4–C7');
+    assert.equal(r.emptyText, '2 · empty');
+    assert.match(r.denied, /Microphone access was blocked/);
+    assert.equal(r.recording, 'true', 'recording started');
+    assert.equal(r.recPressed, 'false', 'recording stopped');
+    assert.equal(r.recorded, '2 · Rec 1', r.status);
+    assert.match(r.status, /Rec 1: \d+\.\d\d s in slot 2/);
+    assert.ok(r.recGrains > r.spawned, 'the recording plays');
+    assert.equal(r.cleared, '2 · empty');
+    assert.equal(r.refilled, '2 · Demo');
+    assert.equal(r.reverseReset, '0');
+  }));
+
   await t.test('no page scrolls sideways at phone width', async () => {
-    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html']) {
+    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html', 'granular/index.html']) {
       const page = await browser.newPage();
       try {
         await page.setViewport(390, 844);

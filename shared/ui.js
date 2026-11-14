@@ -106,8 +106,10 @@
   }
 
   // ---------- knob groups ----------
-  // Appends one boxed group per { title, params } to `container`: numeric
-  // definitions become knobs, `options` become drop-downs.
+  // Appends one boxed group per { title, params, toggle? } to `container`:
+  // numeric definitions become knobs, `options` become drop-downs. A group
+  // with `toggle: 'someKey'` gets an on/off checkbox in its title bound to
+  // the boolean values[someKey] (the group dims when off).
   // o: { values, defaults?, onInput(key, v), onChange?(key, v) }
   // Returns { set(key, v), sync(values) }.
   function buildKnobGroups(container, groups, o) {
@@ -116,7 +118,27 @@
     for (const g of groups) {
       const box = el('div', 'group');
       const body = el('div', 'group-body');
-      box.append(el('div', 'group-title', g.title), body);
+      const title = el('div', 'group-title');
+      if (g.toggle) {
+        const label = el('label', 'group-toggle');
+        const cb = el('input');
+        cb.type = 'checkbox';
+        cb.setAttribute('aria-label', g.title + ' on / off');
+        const show = (v) => { cb.checked = !!v; box.classList.toggle('off', !v); };
+        show(o.values[g.toggle]);
+        cb.addEventListener('change', () => {
+          show(cb.checked);
+          o.onInput(g.toggle, cb.checked);
+          if (o.onChange) o.onChange(g.toggle, cb.checked);
+          cb.blur();
+        });
+        label.append(cb, document.createTextNode(g.title));
+        title.appendChild(label);
+        controls[g.toggle] = { set: show };
+      } else {
+        title.textContent = g.title;
+      }
+      box.append(title, body);
       for (const d of g.params) {
         const def = d.key in defaults ? defaults[d.key] : N.defaultValue(d);
         if (d.options) {
@@ -257,5 +279,291 @@
     return setCollapsed;
   }
 
-  N.ui = { makeKnob, buildKnobGroups, buildParamPanel, collapsible };
+  // ---------- strip (pitch bend / mod wheel) ----------
+  // A vertical touch strip: `track` contains a `.thumb`. Value 0 (bottom) to
+  // 1 (top); with `spring` it returns there on release.
+  // o: { value, spring?, onInput(v) }
+  function makeStrip(track, o) {
+    const thumb = track.querySelector('.thumb');
+    let value = o.value;
+    const render = () => { thumb.style.top = ((1 - value) * 100) + '%'; };
+    const fromEvent = (ev) => {
+      const r = track.getBoundingClientRect();
+      return N.clamp(1 - (ev.clientY - r.top) / r.height, 0, 1);
+    };
+    let active = null;
+    track.addEventListener('pointerdown', (ev) => {
+      ev.preventDefault();
+      if (track.setPointerCapture) { try { track.setPointerCapture(ev.pointerId); } catch (e) { /* synthetic */ } }
+      active = ev.pointerId;
+      value = fromEvent(ev);
+      render();
+      o.onInput(value);
+    });
+    track.addEventListener('pointermove', (ev) => {
+      if (ev.pointerId !== active) return;
+      value = fromEvent(ev);
+      render();
+      o.onInput(value);
+    });
+    const end = (ev) => {
+      if (ev.pointerId !== active) return;
+      active = null;
+      if (o.spring != null) { value = o.spring; render(); o.onInput(value); }
+    };
+    track.addEventListener('pointerup', end);
+    track.addEventListener('pointercancel', end);
+    render();
+    return { set: (v) => { value = v; render(); } };
+  }
+
+  // ---------- keyboard ----------
+  // A playable piano keyboard: multi-touch (slide between keys), mouse, and
+  // the computer keyboard (Z row = lowest octave on screen, Q row = the next,
+  // ←/→ or ↓/↑ = octave, Space = sustain pedal, Esc = all off).
+  // o: { keys (element), octave, span (octaves on screen), labels (bool),
+  //      rangeEl?, sustainButton?, onNoteOn(n), onNoteOff(n),
+  //      onOctave?(octave), onPanic?() }
+  // Notes are MIDI numbers. A note held by several fingers / keys sounds
+  // once; with sustain on, released notes keep sounding until it's lifted.
+  function createKeyboard(o) {
+    const keysEl = o.keys;
+    const state = { octave: o.octave, span: o.span, labels: o.labels !== false };
+    const phys = new Map();       // note -> number of fingers / keys holding it
+    const sustained = new Set();  // released notes kept on by sustain
+    const pointers = new Map();   // pointerId -> note (or null)
+    const keysDown = new Map();   // event.code -> note
+    let pedal = false, latch = false;
+    let keyEls = [];
+    const sustainOn = () => pedal || latch;
+    const baseNote = () => 12 * (state.octave + 1);
+
+    function build() {
+      keysEl.textContent = '';
+      keyEls = [];
+      const count = state.span * 12 + 1;
+      const w = 100 / (state.span * 7 + 1);
+      let whites = 0;
+      for (let i = 0; i < count; i++) {
+        const black = N.BLACK_KEYS.includes(i % 12);
+        const k = el('div', 'key ' + (black ? 'black' : 'white'));
+        k.dataset.i = i;
+        if (black) {
+          k.style.left = (whites * w - w * 0.31) + '%';
+          k.style.width = (w * 0.62) + '%';
+        } else {
+          whites++;
+        }
+        k.append(el('span', 'kl', N.KEY_LABELS[i] || ''), el('span', 'nn'));
+        keysEl.appendChild(k);
+        keyEls.push(k);
+      }
+      label();
+    }
+
+    function label() {
+      const base = baseNote();
+      keyEls.forEach((k, i) => {
+        const name = N.noteName(base + i);
+        k.querySelector('.nn').textContent = (base + i) % 12 === 0 ? name : '';
+        k.setAttribute('aria-label', name);
+      });
+      if (o.rangeEl) o.rangeEl.textContent = 'C' + state.octave + '–C' + (state.octave + state.span);
+      keysEl.classList.toggle('no-labels', !state.labels);
+      paintAll();
+    }
+
+    function paint(n) {
+      const k = keyEls[n - baseNote()];
+      if (!k) return;
+      k.classList.toggle('down', phys.has(n));
+      k.classList.toggle('held', !phys.has(n) && sustained.has(n));
+    }
+    function paintAll() { keyEls.forEach((_, i) => paint(baseNote() + i)); }
+
+    function noteDown(n) {
+      if (n < 0 || n > 127) return;
+      const c = phys.get(n) || 0;
+      phys.set(n, c + 1);
+      if (c === 0) {
+        if (sustained.has(n)) { sustained.delete(n); o.onNoteOff(n); }
+        o.onNoteOn(n);
+      }
+      paint(n);
+    }
+
+    function noteUp(n) {
+      const c = phys.get(n) || 0;
+      if (!c) return;
+      if (c > 1) { phys.set(n, c - 1); return; }
+      phys.delete(n);
+      if (sustainOn()) sustained.add(n);
+      else o.onNoteOff(n);
+      paint(n);
+    }
+
+    function updateSustain() {
+      if (!sustainOn() && sustained.size) {
+        const list = Array.from(sustained);
+        sustained.clear();
+        for (const n of list) { o.onNoteOff(n); paint(n); }
+      }
+      if (o.sustainButton) o.sustainButton.setAttribute('aria-pressed', String(sustainOn()));
+    }
+
+    function setOctave(oct) {
+      oct = N.clamp(oct, 0, N.maxOctave(state.span));
+      if (oct === state.octave) return;
+      state.octave = oct;
+      label();
+      if (o.onOctave) o.onOctave(oct);
+    }
+
+    function panic() {
+      phys.clear();
+      sustained.clear();
+      pointers.clear();
+      keysDown.clear();
+      if (o.onPanic) o.onPanic();
+      paintAll();
+    }
+
+    // pointer input
+    function noteAtPoint(x, y) {
+      const hit = document.elementFromPoint(x, y);
+      const k = hit && hit.closest ? hit.closest('.key') : null;
+      if (!k || !keysEl.contains(k)) return null;
+      return baseNote() + parseInt(k.dataset.i, 10);
+    }
+    keysEl.addEventListener('pointerdown', (ev) => {
+      if (ev.button > 0) return;
+      ev.preventDefault();
+      const n = noteAtPoint(ev.clientX, ev.clientY);
+      pointers.set(ev.pointerId, n);
+      if (n != null) noteDown(n);
+    });
+    root.addEventListener('pointermove', (ev) => {
+      if (!pointers.has(ev.pointerId)) return;
+      const n = noteAtPoint(ev.clientX, ev.clientY);
+      const prev = pointers.get(ev.pointerId);
+      if (n === prev) return;
+      if (prev != null) noteUp(prev);
+      if (n != null) noteDown(n);
+      pointers.set(ev.pointerId, n);
+    });
+    const endPointer = (ev) => {
+      if (!pointers.has(ev.pointerId)) return;
+      const n = pointers.get(ev.pointerId);
+      pointers.delete(ev.pointerId);
+      if (n != null) noteUp(n);
+    };
+    root.addEventListener('pointerup', endPointer);
+    root.addEventListener('pointercancel', endPointer);
+    keysEl.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+    // computer keyboard
+    root.addEventListener('keydown', (ev) => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.defaultPrevented) return;
+      if (N.isTypingTarget(ev.target)) return;
+      if (ev.code === 'Space') {
+        ev.preventDefault();
+        if (!pedal) { pedal = true; updateSustain(); }
+        return;
+      }
+      if (ev.key === 'Escape') { panic(); return; }
+      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowDown') { ev.preventDefault(); if (!ev.repeat) setOctave(state.octave - 1); return; }
+      if (ev.key === 'ArrowRight' || ev.key === 'ArrowUp') { ev.preventDefault(); if (!ev.repeat) setOctave(state.octave + 1); return; }
+      if (!(ev.code in N.KEYMAP)) return;
+      ev.preventDefault();
+      if (ev.repeat || keysDown.has(ev.code)) return;
+      const n = baseNote() + N.KEYMAP[ev.code];
+      keysDown.set(ev.code, n);
+      noteDown(n);
+    });
+    root.addEventListener('keyup', (ev) => {
+      if (ev.code === 'Space') {
+        if (!N.isTypingTarget(ev.target)) ev.preventDefault(); // keep Space from clicking a focused button
+        if (pedal) { pedal = false; updateSustain(); }
+      }
+      if (!keysDown.has(ev.code)) return;
+      noteUp(keysDown.get(ev.code));
+      keysDown.delete(ev.code);
+    });
+    // Let go of everything if the window loses focus mid-press.
+    root.addEventListener('blur', () => {
+      for (const n of keysDown.values()) noteUp(n);
+      keysDown.clear();
+      for (const n of pointers.values()) if (n != null) noteUp(n);
+      pointers.clear();
+      if (pedal) { pedal = false; updateSustain(); }
+    });
+
+    if (o.sustainButton) o.sustainButton.addEventListener('click', () => { latch = !latch; updateSustain(); });
+
+    build();
+    return {
+      setOctave,
+      shiftOctave: (d) => setOctave(state.octave + d),
+      setSpan(span) {
+        state.span = span;
+        const oct = N.clamp(state.octave, 0, N.maxOctave(span));
+        const moved = oct !== state.octave;
+        state.octave = oct;
+        build();
+        if (moved && o.onOctave) o.onOctave(oct);
+      },
+      setLabels(on) { state.labels = on; keysEl.classList.toggle('no-labels', !on); },
+      panic,
+      // Notes currently sounding from the keyboard (held or sustained).
+      held: () => new Set([...phys.keys(), ...sustained]),
+      get octave() { return state.octave; },
+      get span() { return state.span; },
+    };
+  }
+
+  // ---------- oscilloscope ----------
+  // Draws an AnalyserNode's waveform into a canvas, steadied on a rising
+  // zero crossing; a flat line when `active()` is false.
+  // o: { analyser() -> AnalyserNode|null, active() -> bool, gain? }
+  function createScope(canvas, o) {
+    const ctx = canvas.getContext('2d');
+    let color = '', data = null;
+    const readColor = () => { color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim(); };
+    readColor();
+    if (root.matchMedia) {
+      const mq = root.matchMedia('(prefers-color-scheme: light)');
+      if (mq.addEventListener) mq.addEventListener('change', readColor);
+    }
+    function draw() {
+      const dpr = root.devicePixelRatio || 1;
+      const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
+      if (!w || !h) return;
+      if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+      ctx.clearRect(0, 0, w, h);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath();
+      const an = o.active() ? o.analyser() : null;
+      if (!an) {
+        ctx.moveTo(0, h / 2);
+        ctx.lineTo(w, h / 2);
+      } else {
+        if (!data || data.length !== an.fftSize) data = new Float32Array(an.fftSize);
+        an.getFloatTimeDomainData(data);
+        let start = 0;
+        for (let i = 1; i < data.length / 2; i++) if (data[i - 1] < 0 && data[i] >= 0) { start = i; break; }
+        const n = Math.min(700, data.length - start);
+        const g = o.gain || 1.6;
+        for (let i = 0; i < n; i++) {
+          const x = (i / (n - 1)) * w;
+          const y = h / 2 - N.clamp(data[start + i] * g, -1, 1) * (h / 2 - 2 * dpr);
+          if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        }
+      }
+      ctx.stroke();
+    }
+    return { draw };
+  }
+
+  N.ui = { makeKnob, buildKnobGroups, buildParamPanel, collapsible, makeStrip, createKeyboard, createScope };
 })(typeof self !== 'undefined' ? self : this);

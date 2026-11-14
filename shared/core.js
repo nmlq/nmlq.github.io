@@ -196,6 +196,134 @@
     return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
   }
 
+  // ---------- filters ----------
+
+  // Filter types offered by the synth-style apps; lowpass24 is two stages.
+  const FILTER_TYPES = [
+    ['lowpass', 'Low-pass 12 dB'], ['lowpass24', 'Low-pass 24 dB'], ['highpass', 'High-pass'],
+    ['bandpass', 'Band-pass'], ['notch', 'Notch'],
+  ];
+
+  // Resonance 0–100% -> BiquadFilter Q. Web Audio's low/high-pass Q is in dB;
+  // band-pass and notch Q is a unitless bandwidth.
+  function filterQ(type, res) {
+    const r = res / 100;
+    if (type === 'bandpass' || type === 'notch') return 0.5 * Math.pow(2, r * 5.3);
+    return -1 + r * 21;
+  }
+
+  // ---------- sample helpers (granular) ----------
+
+  // Grain window shapes: n samples that start and end at (or near) zero.
+  const GRAIN_SHAPES = [
+    ['hann', 'Hann (smooth)'], ['triangle', 'Triangle'], ['tukey', 'Trapezoid'],
+    ['gauss', 'Gaussian'], ['perc', 'Percussive'], ['reverse', 'Reverse perc'],
+  ];
+  function grainWindow(shape, n) {
+    n = Math.max(2, n || 256);
+    const w = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = i / (n - 1); // 0..1
+      let v;
+      switch (shape) {
+        case 'triangle': v = 1 - Math.abs(2 * x - 1); break;
+        case 'tukey': { // flat top with 25% cosine ramps
+          const r = 0.25;
+          v = x < r ? 0.5 - 0.5 * Math.cos(Math.PI * x / r) : x > 1 - r ? 0.5 - 0.5 * Math.cos(Math.PI * (1 - x) / r) : 1;
+          break;
+        }
+        case 'gauss': v = Math.exp(-0.5 * Math.pow((x - 0.5) / 0.15, 2)); break;
+        case 'perc': v = Math.min(1, x / 0.05) * Math.pow(1 - x, 3); break;    // fast attack, long fall
+        case 'reverse': v = Math.min(1, (1 - x) / 0.05) * Math.pow(x, 3); break; // swell, fast cut
+        default: v = 0.5 - 0.5 * Math.cos(2 * Math.PI * x);                     // hann
+      }
+      w[i] = v;
+    }
+    w[0] = 0;
+    w[n - 1] = 0;
+    return w;
+  }
+
+  // Min / max per column for drawing a waveform `columns` wide.
+  function computePeaks(data, columns) {
+    const min = new Float32Array(columns), max = new Float32Array(columns);
+    const per = data.length / columns;
+    for (let c = 0; c < columns; c++) {
+      const a = Math.floor(c * per), b = Math.max(a + 1, Math.floor((c + 1) * per));
+      let lo = 0, hi = 0;
+      for (let i = a; i < b && i < data.length; i++) {
+        const v = data[i];
+        if (v < lo) lo = v;
+        if (v > hi) hi = v;
+      }
+      min[c] = lo;
+      max[c] = hi;
+    }
+    return { min, max };
+  }
+
+  function peakOf(data) {
+    let p = 0;
+    for (let i = 0; i < data.length; i++) { const a = Math.abs(data[i]); if (a > p) p = a; }
+    return p;
+  }
+
+  // [start, end) of the part louder than `threshold` (linear), with a little
+  // padding so attacks aren't clipped. Returns [0, 0] for silence.
+  function trimBounds(data, threshold, pad) {
+    threshold = threshold == null ? 0.01 : threshold;
+    pad = pad || 0;
+    let a = 0, b = data.length;
+    while (a < b && Math.abs(data[a]) < threshold) a++;
+    if (a === b) return [0, 0];
+    while (b > a && Math.abs(data[b - 1]) < threshold) b--;
+    return [Math.max(0, a - pad), Math.min(data.length, b + pad)];
+  }
+
+  // Scale a copy so the loudest sample reaches `target` (no change for silence).
+  function normalize(data, target) {
+    const p = peakOf(data), out = new Float32Array(data.length);
+    const g = p > 0 ? (target || 0.9) / p : 1;
+    for (let i = 0; i < data.length; i++) out[i] = data[i] * g;
+    return out;
+  }
+
+  // Mono 16-bit PCM WAV file from float samples.
+  function encodeWav(samples, sampleRate) {
+    const n = samples.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE');
+    str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, n * 2, true);
+    for (let i = 0; i < n; i++) {
+      const s = clamp(samples[i], -1, 1);
+      v.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return buf;
+  }
+
+  // ---------- keyboard ----------
+
+  // Computer keys, as semitones above the lowest C on screen: the Z row plays
+  // the first octave, the Q row (with the number row for sharps) the next.
+  const KEYMAP = {
+    KeyZ: 0, KeyS: 1, KeyX: 2, KeyD: 3, KeyC: 4, KeyV: 5, KeyG: 6, KeyB: 7, KeyH: 8, KeyN: 9, KeyJ: 10, KeyM: 11,
+    Comma: 12, KeyL: 13, Period: 14, Semicolon: 15, Slash: 16,
+    KeyQ: 12, Digit2: 13, KeyW: 14, Digit3: 15, KeyE: 16, KeyR: 17, Digit5: 18, KeyT: 19, Digit6: 20, KeyY: 21,
+    Digit7: 22, KeyU: 23, KeyI: 24, Digit9: 25, KeyO: 26, Digit0: 27, KeyP: 28, BracketLeft: 29, Equal: 30, BracketRight: 31,
+  };
+  const CODE_CHARS = { Comma: ',', Period: '.', Semicolon: ';', Slash: '/', BracketLeft: '[', BracketRight: ']', Equal: '=' };
+  const codeChar = (code) => CODE_CHARS[code] || code.replace(/^Key|^Digit/, '');
+  // One label per on-screen key: the Z row for the first octave, Q row above.
+  const KEY_LABELS = {};
+  for (const [code, i] of Object.entries(KEYMAP)) {
+    if (i < 12 || !/^(Comma|KeyL|Period|Semicolon|Slash)$/.test(code)) KEY_LABELS[i] = codeChar(code);
+  }
+  const BLACK_KEYS = [1, 3, 6, 8, 10];
+  // Highest lowest-C octave so the top key stays at or below C8.
+  const maxOctave = (span) => 8 - span;
+
   // ---------- input ----------
 
   // True when keyboard shortcuts should leave the event alone.
@@ -211,5 +339,8 @@
     defaultValue, loadDefaults, validValue, restoreParams, loadJSON, saveJSON,
     pluckValue, adsrValue, tanhCurve, fillImpulse, fillNoise, silentWav,
     knobScale, arcPath, isTypingTarget,
+    FILTER_TYPES, filterQ,
+    GRAIN_SHAPES, grainWindow, computePeaks, peakOf, trimBounds, normalize, encodeWav,
+    KEYMAP, KEY_LABELS, BLACK_KEYS, maxOctave,
   };
 });

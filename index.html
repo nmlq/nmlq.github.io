@@ -65,6 +65,7 @@
     .thumb .keys-b rect { fill: var(--fg); }
     .thumb .keys-w rect.on, .thumb .keys-b rect.on { fill: var(--accent); stroke: var(--accent); }
     .thumb .wave { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; }
+    .thumb .spray { fill: var(--accent); fill-opacity: 0.12; stroke: none; }
     .thumb .chord-shape { fill: var(--accent); fill-opacity: 0.12; stroke-width: 1.2; opacity: 0.9; }
     .label {
       padding: 10px 14px 14px;
@@ -221,6 +222,28 @@
         <div class="label">
           <strong>Synth</strong>
           <span>A playable mono / poly synthesizer</span>
+        </div>
+      </a>
+
+      <a class="item" href="granular/">
+        <div class="thumb">
+          <svg viewBox="0 0 100 100" aria-hidden="true" class="no-spin">
+            <rect class="spray" x="22" y="18" width="34" height="64" rx="3"/>
+            <path class="edges" d="M8 46.4 L9 45.2 L10 47.9 L11 52.4 L12 55.2 L13 53.9 L14 49.8 L15 46.4 L16 46.1 L17 48.6 L18 51.5 L19 52.8 L20 52.1 L21 49.8 L22 47.2 L23 45.8 L24 47.9 L25 53.5 L26 59.0 L27 58.4 L28 49.1 L29 36.9 L30 32.7 L31 42.7 L32 60.8 L33 72.4 L34 66.9 L35 48.1 L36 31.2 L37 29.6 L38 43.1 L39 59.2 L40 65.5 L41 59.5 L42 48.9 L43 42.5 L44 43.3 L45 48.1 L46 52.4 L47 53.7 L48 52.5 L49 49.6 L50 46.7 L51 45.8 L52 48.4 L53 53.2 L54 56.5 L55 54.9 L56 49.0 L57 43.2 L58 42.5 L59 47.6 L60 54.4 L61 57.6 L62 55.0 L63 49.0 L64 44.3 L65 44.3 L66 48.4 L67 53.0 L68 54.6 L69 52.7 L70 49.4 L71 47.5 L72 47.8 L73 49.5 L74 51.0 L75 51.5 L76 51.0 L77 49.7 L78 48.5 L79 48.2 L80 49.5 L81 51.3 L82 52.2 L83 51.4 L84 49.6 L85 48.4 L86 48.6 L87 49.7 L88 50.6 L89 50.8 L90 50.3 L91 49.9 L92 49.8"/>
+            <g class="nodes lit">
+              <circle cx="24" cy="40" r="3.2"/>
+              <circle cx="31" cy="57" r="3.2"/>
+              <circle cx="38" cy="46" r="3.2"/>
+              <circle cx="45" cy="62" r="3.2"/>
+              <circle cx="52" cy="38" r="3.2"/>
+              <circle cx="60" cy="54" r="3.2"/>
+              <circle cx="70" cy="44" r="3.2"/>
+            </g>
+          </svg>
+        </div>
+        <div class="label">
+          <strong>Granular</strong>
+          <span>Record a sound and play it as clouds of grains</span>
         </div>
       </a>
 
