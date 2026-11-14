@@ -8,20 +8,20 @@
 (function () {
   'use strict';
 
+  const N = window.nmlq;
+  const { clamp } = N;
   const STORAGE_KEY = 'nmlq-drummer-v1';
   const STEPS = 16;
 
   // ---------- the drum sound generator ----------
 
-  const fmtHz = (v) => (v < 1000 ? Math.round(v) + ' Hz' : (v / 1000).toFixed(v < 10000 ? 2 : 1) + ' kHz');
-  const fmtMs = (v) => (v < 10 ? v.toFixed(1) : Math.round(v)) + ' ms';
-  const fmtPct = (v) => Math.round(v) + '%';
+  const { hz: fmtHz, ms: fmtMs, pct: fmtPct } = N.fmt;
 
   // Parameters of one drum sound, grouped as they appear in the editor.
   const SOUND_GROUPS = [
     {
       title: 'Oscillator', params: [
-        { key: 'wave', label: 'Wave', options: [['sine', 'Sine'], ['triangle', 'Triangle'], ['square', 'Square'], ['sawtooth', 'Sawtooth']] },
+        { key: 'wave', label: 'Wave', options: N.WAVES },
         { key: 'pitch', label: 'Pitch', min: 20, max: 12000, log: true, format: fmtHz },
         { key: 'bend', label: 'Pitch drop', min: 0, max: 48, step: 1, format: (v) => Math.round(v) + ' st' },
         { key: 'bendTime', label: 'Drop time', min: 5, max: 500, log: true, format: fmtMs },
@@ -119,20 +119,17 @@
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          bpm: state.bpm, shuffle: state.shuffle, volume: state.volume, selected: state.selected,
-          rows: state.rows.map((r) => ({ name: r.name, hue: r.hue, sound: r.sound, steps: r.steps, mute: r.mute, solo: r.solo })),
-        }));
-      } catch (e) { /* ignore */ }
+      N.saveJSON(STORAGE_KEY, {
+        bpm: state.bpm, shuffle: state.shuffle, volume: state.volume, selected: state.selected,
+        rows: state.rows.map((r) => ({ name: r.name, hue: r.hue, sound: r.sound, steps: r.steps, mute: r.mute, solo: r.solo })),
+      });
     }, 250);
   }
 
-  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
   function load() {
     try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+      const saved = N.loadJSON(STORAGE_KEY);
       if (!saved || !Array.isArray(saved.rows)) return false;
       state.bpm = clamp(Number(saved.bpm) || 110, 40, 240);
       state.shuffle = clamp(Number(saved.shuffle) || 0, 0, 100);
@@ -162,28 +159,16 @@
 
   function ensureAudio() {
     if (!audio.ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      const ac = new AC();
+      const ac = N.audio.createContext();
+      if (!ac) return null;
       audio.ctx = ac;
       audio.master = ac.createGain();
-      const comp = ac.createDynamicsCompressor();
-      comp.threshold.value = -10;
-      comp.knee.value = 6;
-      comp.ratio.value = 4;
-      comp.attack.value = 0.003;
-      comp.release.value = 0.15;
-      audio.master.connect(comp).connect(ac.destination);
+      audio.master.connect(N.audio.compressor(ac, { threshold: -10, knee: 6, ratio: 4, attack: 0.003, release: 0.15 })).connect(ac.destination);
       // Two seconds of white noise, shared by every hit.
-      const len = ac.sampleRate * 2;
-      audio.noise = ac.createBuffer(1, len, ac.sampleRate);
-      const data = audio.noise.getChannelData(0);
-      for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+      audio.noise = N.audio.noiseBuffer(ac, 2);
       applyVolume();
     }
-    // iOS can also report 'interrupted' (e.g. after a call or app switch).
-    if (audio.ctx.state !== 'running') audio.ctx.resume().catch(() => {});
-    return audio.ctx;
+    return N.audio.resume(audio.ctx);
   }
 
   function applyVolume() {
@@ -192,15 +177,7 @@
 
   function driveCurve(amount) {
     const key = Math.round(amount);
-    if (!audio.curves[key]) {
-      const k = 1 + key / 4;
-      const n = 1024, curve = new Float32Array(n), norm = Math.tanh(k);
-      for (let i = 0; i < n; i++) {
-        const x = (i / (n - 1)) * 2 - 1;
-        curve[i] = Math.tanh(k * x) / norm;
-      }
-      audio.curves[key] = curve;
-    }
+    if (!audio.curves[key]) audio.curves[key] = N.tanhCurve(1 + key / 4, 1024);
     return audio.curves[key];
   }
 
@@ -271,56 +248,9 @@
     if (last) last.onended = () => out.disconnect();
   }
 
-  // ---------- iOS audio unlock ----------
-  // On iPhone (Safari and Chrome both use WebKit) Web Audio is muted by the
-  // ring/silent switch unless the page's audio session is "playback", and the
-  // context only starts inside certain gestures (touchend / click).
-  let iosUnlocked = false;
-  let silentEl = null;
+  // ---------- starting audio ----------
 
-  function silentWavUrl() {
-    const n = 800, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
-    const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE');
-    str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
-    str(36, 'data'); v.setUint32(40, n, true);
-    for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
-    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-  }
-
-  function unlockAudio() {
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
-    const ac = ensureAudio();
-    if (!ac) return;
-    if (!iosUnlocked) {
-      try {
-        if (!silentEl) {
-          silentEl = document.createElement('audio');
-          silentEl.setAttribute('playsinline', '');
-          silentEl.src = silentWavUrl();
-        }
-        const p = silentEl.play();
-        if (p && p.catch) p.catch(() => {});
-      } catch (e) { /* ignore */ }
-      try {
-        const src = ac.createBufferSource();
-        src.buffer = ac.createBuffer(1, 1, ac.sampleRate);
-        src.connect(ac.destination);
-        src.start(0);
-      } catch (e) { /* ignore */ }
-    }
-    if (ac.state === 'running') iosUnlocked = true;
-  }
-
-  for (const type of ['pointerdown', 'touchstart', 'touchend', 'click', 'keydown']) {
-    window.addEventListener(type, unlockAudio, { capture: true, passive: true });
-  }
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && audio.ctx && audio.ctx.state !== 'running') {
-      audio.ctx.resume().catch(() => {});
-    }
-  });
+  N.audio.installUnlock({ ensure: ensureAudio, current: () => audio.ctx });
 
   // ---------- sequencer ----------
 
@@ -368,108 +298,7 @@
 
   const toggle = () => (seq.playing ? stop() : start());
 
-  // ---------- knob ----------
-  // Drag up / down (Shift for fine), scroll, or use the arrow keys.
-  // Double-click resets to the default value.
-
-  function arcPath(a0, a1) {
-    const r = 16, p = (a) => [20 + r * Math.sin(a * Math.PI / 180), 20 - r * Math.cos(a * Math.PI / 180)];
-    const [x0, y0] = p(a0), [x1, y1] = p(a1);
-    return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 ${a1 - a0 > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
-  }
-
-  function makeKnob(o) {
-    const el = document.createElement('div');
-    el.className = 'knob';
-    el.tabIndex = 0;
-    el.setAttribute('role', 'slider');
-    el.setAttribute('aria-label', o.label);
-    el.setAttribute('aria-valuemin', o.min);
-    el.setAttribute('aria-valuemax', o.max);
-    el.title = o.label + ' — drag, scroll or use arrow keys; double-click to reset';
-    el.innerHTML = '<svg viewBox="0 0 40 40" aria-hidden="true"><path class="track"/><path class="fill"/><line class="pointer"/></svg>' +
-      '<div class="k-value"></div><div class="k-label"></div>';
-    const [track, fill, pointer] = el.querySelectorAll('path, line');
-    const valueEl = el.querySelector('.k-value');
-    el.querySelector('.k-label').textContent = o.label;
-    track.setAttribute('d', arcPath(-135, 135));
-
-    const toNorm = (v) => (o.log ? Math.log(v / o.min) / Math.log(o.max / o.min) : (v - o.min) / (o.max - o.min));
-    const fromNorm = (n) => {
-      n = clamp(n, 0, 1);
-      let v = o.log ? o.min * Math.pow(o.max / o.min, n) : o.min + n * (o.max - o.min);
-      if (o.step) v = Math.round(v / o.step) * o.step;
-      return clamp(+v.toFixed(4), o.min, o.max);
-    };
-    let value = o.value;
-
-    function render() {
-      const n = clamp(toNorm(value), 0, 1);
-      const a = -135 + 270 * n;
-      // Bipolar knobs (like pan) fill from the centre.
-      const from = o.min < 0 && o.max > 0 ? 0 : -135;
-      if (Math.abs(a - from) < 0.5) fill.removeAttribute('d');
-      else fill.setAttribute('d', a > from ? arcPath(from, a) : arcPath(a, from));
-      const rad = a * Math.PI / 180;
-      pointer.setAttribute('x1', 20 + 6 * Math.sin(rad));
-      pointer.setAttribute('y1', 20 - 6 * Math.cos(rad));
-      pointer.setAttribute('x2', 20 + 13 * Math.sin(rad));
-      pointer.setAttribute('y2', 20 - 13 * Math.cos(rad));
-      const text = o.format ? o.format(value) : String(value);
-      valueEl.textContent = text;
-      el.setAttribute('aria-valuenow', value);
-      el.setAttribute('aria-valuetext', text);
-    }
-
-    function set(v, fire) {
-      v = clamp(v, o.min, o.max);
-      if (v === value) return;
-      value = v;
-      render();
-      if (fire && o.onInput) o.onInput(value);
-    }
-
-    let drag = null;
-    el.addEventListener('pointerdown', (ev) => {
-      el.setPointerCapture(ev.pointerId);
-      el.focus({ preventScroll: true });
-      drag = { y: ev.clientY, n: toNorm(value) };
-      ev.preventDefault();
-    });
-    el.addEventListener('pointermove', (ev) => {
-      if (!drag) return;
-      const range = ev.shiftKey ? 800 : 200;
-      set(fromNorm(drag.n + (drag.y - ev.clientY) / range), true);
-    });
-    const end = () => { if (drag && o.onChange) o.onChange(value); drag = null; };
-    el.addEventListener('pointerup', end);
-    el.addEventListener('pointercancel', end);
-    el.addEventListener('wheel', (ev) => {
-      ev.preventDefault();
-      set(fromNorm(toNorm(value) - Math.sign(ev.deltaY) * (ev.shiftKey ? 0.005 : 0.02)), true);
-      if (o.onChange) o.onChange(value);
-    }, { passive: false });
-    el.addEventListener('keydown', (ev) => {
-      const small = o.step && !o.log ? o.step / (o.max - o.min) : 0.01;
-      const moves = { ArrowUp: small, ArrowRight: small, ArrowDown: -small, ArrowLeft: -small, PageUp: 0.1, PageDown: -0.1 };
-      let v;
-      if (ev.key in moves) v = fromNorm(toNorm(value) + moves[ev.key]);
-      else if (ev.key === 'Home') v = o.min;
-      else if (ev.key === 'End') v = o.max;
-      else return;
-      ev.preventDefault();
-      set(v, true);
-      if (o.onChange) o.onChange(value);
-    });
-    el.addEventListener('dblclick', () => {
-      if (o.def == null) return;
-      set(o.def, true);
-      if (o.onChange) o.onChange(value);
-    });
-
-    render();
-    return { el, set: (v) => set(v, false) };
-  }
+  const makeKnob = N.ui.makeKnob;
 
   // ---------- sequencer view ----------
 
@@ -715,39 +544,12 @@
 
     const groups = document.createElement('div');
     groups.className = 'groups';
-    for (const g of SOUND_GROUPS) {
-      const box = document.createElement('div');
-      box.className = 'group';
-      const title = document.createElement('div');
-      title.className = 'group-title';
-      title.textContent = g.title;
-      const body = document.createElement('div');
-      body.className = 'group-body';
-      for (const d of g.params) {
-        if (d.options) {
-          const field = document.createElement('label');
-          field.className = 'field';
-          const sel = document.createElement('select');
-          for (const [v, n] of d.options) sel.appendChild(new Option(n, v));
-          sel.value = row.sound[d.key];
-          sel.addEventListener('change', () => { row.sound[d.key] = sel.value; previewSoon(row); save(); });
-          const lab = document.createElement('span');
-          lab.textContent = d.label;
-          field.append(sel, lab);
-          body.appendChild(field);
-        } else {
-          const knob = makeKnob(Object.assign({}, d, {
-            value: row.sound[d.key],
-            def: BASE[d.key],
-            onInput: (v) => { row.sound[d.key] = v; save(); },
-            onChange: () => previewSoon(row),
-          }));
-          body.appendChild(knob.el);
-        }
-      }
-      box.append(title, body);
-      groups.appendChild(box);
-    }
+    N.ui.buildKnobGroups(groups, SOUND_GROUPS, {
+      values: row.sound,
+      defaults: BASE,
+      onInput: (key, v) => { row.sound[key] = v; save(); },
+      onChange: () => previewSoon(row),
+    });
     editorEl.appendChild(groups);
   }
 
@@ -819,7 +621,7 @@
   }
 
   // Space plays / stops, except while typing in a text field.
-  const typing = (t) => t && (t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || (t.tagName === 'INPUT' && (t.type === 'text' || t.type === 'number')));
+  const typing = N.isTypingTarget;
   window.addEventListener('keydown', (ev) => {
     if (ev.code !== 'Space' || typing(ev.target) || ev.metaKey || ev.ctrlKey || ev.altKey) return;
     ev.preventDefault();

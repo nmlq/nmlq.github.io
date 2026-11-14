@@ -1,0 +1,15 @@
+{
+  "name": "nmlq.github.io",
+  "private": true,
+  "description": "Small interactive musical toys for the browser, built on a shared Web Audio library.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "test:unit": "node --test tests/core.test.js tests/audio.test.js tests/repo.test.js",
+    "test:browser": "node --test tests/browser.test.js",
+    "hooks": "git config core.hooksPath .githooks",
+    "prepare": "git config core.hooksPath .githooks || true"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
