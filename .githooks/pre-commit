@@ -1,0 +1,23 @@
+#!/bin/sh
+# Runs the test suite before every commit. Enable once per clone with:
+#   npm run hooks        (or: git config core.hooksPath .githooks)
+# Skip in an emergency with: git commit --no-verify
+#
+# Browser tests run when Chrome is found (CHROME_PATH, the usual macOS
+# location, or PATH) and are skipped otherwise.
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "pre-commit: node not found; skipping tests" >&2
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+echo "pre-commit: running tests…"
+if ! node --test tests/*.test.js >"${TMPDIR:-/tmp}/nmlq-pre-commit.log" 2>&1; then
+  grep -vE '^\s+at ' "${TMPDIR:-/tmp}/nmlq-pre-commit.log" | tail -60
+  echo "pre-commit: tests failed; commit aborted (git commit --no-verify to skip)" >&2
+  exit 1
+fi
+grep -E '^ℹ (tests|pass|skipped)' "${TMPDIR:-/tmp}/nmlq-pre-commit.log" | tr '\n' ' '
+echo

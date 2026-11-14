@@ -4,33 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>nmlq</title>
+  <link rel="stylesheet" href="shared/nmlq.css">
   <style>
-    :root {
-      --bg: #0d1017;
-      --fg: #e6e9ef;
-      --muted: #8a93a6;
-      --card: #141822;
-      --border: rgba(255, 255, 255, 0.09);
-      --accent: #7aa2ff;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #f5f6f9;
-        --fg: #1b1f2a;
-        --muted: #5d6578;
-        --card: #ffffff;
-        --border: rgba(0, 0, 0, 0.09);
-        --accent: #3a63d8;
-      }
-    }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      min-height: 100%;
-      background: var(--bg);
-      color: var(--fg);
-      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
-    }
+    html, body { min-height: 100%; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
     main {
       max-width: 960px;
       margin: 0 auto;
@@ -85,6 +61,10 @@
     .thumb .nodes { fill: var(--card); stroke: var(--fg); stroke-width: 1.2; }
     .thumb .nodes.small { stroke: var(--muted); }
     .thumb .nodes.lit { fill: var(--accent); stroke: var(--accent); }
+    .thumb .keys-w rect { fill: none; stroke: var(--muted); stroke-width: 0.9; }
+    .thumb .keys-b rect { fill: var(--fg); }
+    .thumb .keys-w rect.on, .thumb .keys-b rect.on { fill: var(--accent); stroke: var(--accent); }
+    .thumb .wave { fill: none; stroke: var(--accent); stroke-width: 1.6; stroke-linejoin: round; }
     .thumb .chord-shape { fill: var(--accent); fill-opacity: 0.12; stroke-width: 1.2; opacity: 0.9; }
     .label {
       padding: 10px 14px 14px;
@@ -213,6 +193,34 @@
         <div class="label">
           <strong>Drummer</strong>
           <span>A 16-step drum sequencer</span>
+        </div>
+      </a>
+
+      <a class="item" href="synth/">
+        <div class="thumb">
+          <svg viewBox="0 0 100 100" aria-hidden="true" class="no-spin">
+            <path class="wave" d="M8 40 L22 16 L22 40 L36 16 L36 40 L50 16 L50 40 L64 16 L64 40 L78 16 L78 40 L92 16 L92 40"/>
+            <g class="keys-w">
+              <rect class="on" x="8" y="52" width="12" height="36" rx="1.5"/>
+              <rect x="20" y="52" width="12" height="36" rx="1.5"/>
+              <rect x="32" y="52" width="12" height="36" rx="1.5"/>
+              <rect x="44" y="52" width="12" height="36" rx="1.5"/>
+              <rect class="on" x="56" y="52" width="12" height="36" rx="1.5"/>
+              <rect x="68" y="52" width="12" height="36" rx="1.5"/>
+              <rect x="80" y="52" width="12" height="36" rx="1.5"/>
+            </g>
+            <g class="keys-b">
+              <rect x="16.5" y="52" width="7" height="22" rx="1"/>
+              <rect x="28.5" y="52" width="7" height="22" rx="1"/>
+              <rect x="52.5" y="52" width="7" height="22" rx="1"/>
+              <rect x="64.5" y="52" width="7" height="22" rx="1"/>
+              <rect x="76.5" y="52" width="7" height="22" rx="1"/>
+            </g>
+          </svg>
+        </div>
+        <div class="label">
+          <strong>Synth</strong>
+          <span>A playable mono / poly synthesizer</span>
         </div>
       </a>
 

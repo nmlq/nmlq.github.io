@@ -1,0 +1,252 @@
+// Unit tests for shared/core.js (pure helpers).
+'use strict';
+
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const N = require('../shared/core.js');
+
+const close = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} ≉ ${b}`);
+
+test('clamp keeps values inside the range', () => {
+  assert.equal(N.clamp(5, 0, 10), 5);
+  assert.equal(N.clamp(-1, 0, 10), 0);
+  assert.equal(N.clamp(11, 0, 10), 10);
+});
+
+test('midiFreq: A4 = 440 Hz, octaves double', () => {
+  close(N.midiFreq(69), 440);
+  close(N.midiFreq(81), 880);
+  close(N.midiFreq(57), 220);
+  close(N.midiFreq(60), 261.6255653005986);
+});
+
+test('noteName uses C4 = 60 and handles octaves', () => {
+  assert.equal(N.noteName(60), 'C4');
+  assert.equal(N.noteName(69), 'A4');
+  assert.equal(N.noteName(61), 'C♯4');
+  assert.equal(N.noteName(61, N.FLATS), 'D♭4');
+  assert.equal(N.noteName(12), 'C0');
+  assert.equal(N.noteName(48), 'C3');
+});
+
+test('circlePos maps the circle of fifths and is its own inverse', () => {
+  assert.deepEqual([0, 1, 2, 3].map(N.circlePos), [0, 7, 2, 9]);
+  for (let pc = 0; pc < 12; pc++) assert.equal(N.circlePos(N.circlePos(pc)), pc);
+});
+
+test('WAVES are the four oscillator types in display order', () => {
+  assert.deepEqual(N.WAVES.map((w) => w[0]), ['sine', 'triangle', 'sawtooth', 'square']);
+});
+
+test('note name tables have 12 entries each', () => {
+  assert.equal(N.SHARPS.length, 12);
+  assert.equal(N.FLATS.length, 12);
+});
+
+test('formatters', () => {
+  assert.equal(N.fmt.hz(440), '440 Hz');
+  assert.equal(N.fmt.hz(1800), '1.80 kHz');
+  assert.equal(N.fmt.hz(12000), '12.0 kHz');
+  assert.equal(N.fmt.ms(0), '0 ms');
+  assert.equal(N.fmt.ms(0.5), '0.5 ms');
+  assert.equal(N.fmt.ms(4), '4 ms');
+  assert.equal(N.fmt.ms(300), '300 ms');
+  assert.equal(N.fmt.ms(1250), '1.25 s');
+  assert.equal(N.fmt.pct(69.6), '70%');
+  assert.equal(N.fmt.signed(7), '+7');
+  assert.equal(N.fmt.signed(-3), '-3');
+  assert.equal(N.fmt.signed(0), '0');
+  assert.equal(N.fmt.signedPct(40), '+40%');
+  assert.equal(N.fmt.step({ step: 0.1, unit: 's' }, 4), '4.0s');
+  assert.equal(N.fmt.step({ step: 1, unit: '%' }, 60), '60%');
+  assert.equal(N.fmt.step({ step: 0.05 }, 0.25), '0.25');
+});
+
+const DEFS = [
+  { section: 'Sound' },
+  { key: 'soundOn', label: 'Sound on', bool: true },
+  { key: 'wave', label: 'Waveform', options: N.WAVES, select: 'triangle' },
+  { key: 'mode', label: 'Mode', options: [['a', 'A'], ['b', 'B']], value: 'b' },
+  { key: 'volume', label: 'Volume', min: 0, max: 100, step: 1, value: 60 },
+  { key: 'reverb', label: 'Reverb', min: 0, max: 100, step: 1, value: 35, toggle: true },
+  { key: 'vibrato', label: 'Vibrato', min: 1, max: 40, step: 1, value: 6, toggle: false },
+];
+
+test('defaultValue reads bool / select / value', () => {
+  assert.equal(N.defaultValue(DEFS[1]), true);
+  assert.equal(N.defaultValue(DEFS[2]), 'triangle');
+  assert.equal(N.defaultValue(DEFS[3]), 'b');
+  assert.equal(N.defaultValue(DEFS[4]), 60);
+});
+
+test('loadDefaults fills params and toggle state, skipping sections', () => {
+  const params = {}, enabled = {};
+  N.loadDefaults(DEFS, params, enabled);
+  assert.deepEqual(params, { soundOn: true, wave: 'triangle', mode: 'b', volume: 60, reverb: 35, vibrato: 6 });
+  assert.deepEqual(enabled, { reverb: true, vibrato: false });
+});
+
+test('loadDefaults with a filter only resets matching definitions', () => {
+  const params = { volume: 10, wave: 'square' };
+  N.loadDefaults(DEFS, params, null, (d) => d.key === 'volume');
+  assert.deepEqual(params, { volume: 60, wave: 'square' });
+});
+
+test('restoreParams accepts valid values, clamps numbers, rejects junk', () => {
+  const params = {}, enabled = {};
+  N.loadDefaults(DEFS, params, enabled);
+  N.restoreParams(DEFS, params, {
+    soundOn: 'yes',        // wrong type -> ignored
+    wave: 'sawtooth',      // valid option
+    mode: 'z',             // unknown option -> ignored
+    volume: 250,           // clamped
+    reverb: NaN,           // not finite -> ignored
+    vibrato: '12',         // wrong type -> ignored
+    extra: 1,              // unknown key -> ignored
+  }, enabled, { reverb: false, vibrato: 'on', volume: false });
+  assert.deepEqual(params, { soundOn: true, wave: 'sawtooth', mode: 'b', volume: 100, reverb: 35, vibrato: 6 });
+  assert.deepEqual(enabled, { reverb: false, vibrato: false });
+  assert.ok(!('volume' in enabled), 'only toggleable keys get an enabled flag');
+});
+
+test('restoreParams tolerates missing or broken saved data', () => {
+  const params = { volume: 60 };
+  for (const saved of [null, undefined, 'x', 42]) {
+    N.restoreParams(DEFS, params, saved);
+    assert.equal(params.volume, 60);
+  }
+});
+
+test('loadJSON / saveJSON survive missing and throwing storage', () => {
+  const had = 'localStorage' in globalThis;
+  const old = globalThis.localStorage;
+  try {
+    const store = {};
+    globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = v; } };
+    assert.equal(N.saveJSON('k', { a: 1 }), true);
+    assert.deepEqual(N.loadJSON('k'), { a: 1 });
+    assert.equal(N.loadJSON('missing'), null);
+    store.bad = '{not json';
+    assert.equal(N.loadJSON('bad'), null);
+
+    globalThis.localStorage = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('blocked'); } };
+    assert.equal(N.loadJSON('k'), null);
+    assert.equal(N.saveJSON('k', 1), false);
+  } finally {
+    if (had) globalThis.localStorage = old; else delete globalThis.localStorage;
+  }
+});
+
+test('pluckValue: linear attack, exponential decay to 0.0001', () => {
+  const v = { t: 1, atk: 0.1, dec: 2, peak: 0.2 };
+  assert.equal(N.pluckValue(v, 0.5), 0);
+  close(N.pluckValue(v, 1.05), 0.1);
+  close(N.pluckValue(v, 1.1), 0.2);
+  close(N.pluckValue(v, 3.1), 0.0001);
+  close(N.pluckValue(v, 10), 0.0001);
+  assert.ok(N.pluckValue(v, 2) < 0.2 && N.pluckValue(v, 2) > 0.0001);
+});
+
+test('adsrValue: attack from current level, decay towards sustain, release to 0', () => {
+  const on = { stage: 'on', t: 0, from: 0.05, peak: 0.2, sustain: 0.1, a: 0.1, d: 0.5 };
+  close(N.adsrValue(on, 0), 0.05);
+  close(N.adsrValue(on, 0.05), 0.125);
+  close(N.adsrValue(on, 0.1), 0.2);
+  // After the decay time the level is within e^-5 of the sustain level.
+  close(N.adsrValue(on, 0.6), 0.1 + 0.1 * Math.exp(-5));
+  close(N.adsrValue(on, 100), 0.1, 1e-12);
+
+  const rel = { stage: 'rel', t: 1, level: 0.1, r: 0.3 };
+  close(N.adsrValue(rel, 1), 0.1);
+  close(N.adsrValue(rel, 1.3), 0.1 * Math.exp(-5));
+  assert.equal(N.adsrValue({}, 5), 0);
+});
+
+test('adsrValue is continuous across the attack/decay boundary', () => {
+  const e = { stage: 'on', t: 0, from: 0, peak: 1, sustain: 0.5, a: 0.2, d: 1 };
+  close(N.adsrValue(e, 0.2 - 1e-9), N.adsrValue(e, 0.2), 1e-6);
+});
+
+test('tanhCurve is odd, monotonic and normalised to ±1', () => {
+  const c = N.tanhCurve(5, 1025);
+  assert.equal(c.length, 1025);
+  close(c[0], -1, 1e-6);
+  close(c[1024], 1, 1e-6);
+  close(c[512], 0, 1e-6);
+  for (let i = 1; i < c.length; i++) assert.ok(c[i] >= c[i - 1]);
+  for (let i = 0; i < 512; i++) close(c[i], -c[1024 - i], 1e-6);
+});
+
+test('fillImpulse fades from noise to silence', () => {
+  let k = 0;
+  const rand = () => [1, 0][k++ % 2]; // alternates +1, -1
+  const d = N.fillImpulse(new Float32Array(1000), rand);
+  close(d[0], 1, 1e-6);
+  close(d[1], -Math.pow(1 - 1 / 1000, 3), 1e-6);
+  assert.ok(Math.abs(d[999]) < 1e-7);
+  const r = N.fillImpulse(new Float32Array(500));
+  for (const x of r) assert.ok(x >= -1 && x <= 1);
+});
+
+test('fillNoise stays within [-1, 1]', () => {
+  const d = N.fillNoise(new Float32Array(2000));
+  let nonzero = 0;
+  for (const x of d) { assert.ok(x >= -1 && x <= 1); if (x !== 0) nonzero++; }
+  assert.ok(nonzero > 1900);
+});
+
+test('silentWav is a valid 8 kHz mono 8-bit WAV of silence', () => {
+  const buf = N.silentWav();
+  const v = new DataView(buf);
+  const str = (o, n) => String.fromCharCode(...new Uint8Array(buf, o, n));
+  assert.equal(str(0, 4), 'RIFF');
+  assert.equal(str(8, 4), 'WAVE');
+  assert.equal(str(12, 4), 'fmt ');
+  assert.equal(str(36, 4), 'data');
+  assert.equal(v.getUint32(4, true), buf.byteLength - 8);
+  assert.equal(v.getUint16(22, true), 1);      // mono
+  assert.equal(v.getUint32(24, true), 8000);   // sample rate
+  assert.equal(v.getUint16(34, true), 8);      // bits per sample
+  assert.equal(v.getUint32(40, true), buf.byteLength - 44);
+  for (const b of new Uint8Array(buf, 44)) assert.equal(b, 128);
+});
+
+test('knobScale: linear round trip with steps', () => {
+  const { toNorm, fromNorm } = N.knobScale({ min: -12, max: 12, step: 1 });
+  assert.equal(toNorm(0), 0.5);
+  assert.equal(fromNorm(0.5), 0);
+  assert.equal(fromNorm(0.52), 0);
+  assert.equal(fromNorm(-1), -12);
+  assert.equal(fromNorm(2), 12);
+  for (let v = -12; v <= 12; v++) assert.equal(fromNorm(toNorm(v)), v);
+});
+
+test('knobScale: logarithmic for frequencies and times', () => {
+  const { toNorm, fromNorm } = N.knobScale({ min: 20, max: 20000, log: true });
+  close(toNorm(20), 0);
+  close(toNorm(20000), 1);
+  close(toNorm(Math.sqrt(20 * 20000)), 0.5);
+  close(fromNorm(0.5), Math.sqrt(20 * 20000), 1e-3);
+  for (const v of [30, 440, 1800, 9000]) close(fromNorm(toNorm(v)), v, 1e-3);
+});
+
+test('arcPath draws arcs on the 40×40 knob face', () => {
+  assert.match(N.arcPath(-135, 135), /^M[\d.]+ [\d.]+A16 16 0 1 1 [\d.]+ [\d.]+$/);
+  assert.match(N.arcPath(0, 90), /A16 16 0 0 1 /);
+  assert.equal(N.arcPath(0, 90), 'M20.00 4.00A16 16 0 0 1 36.00 20.00');
+});
+
+test('isTypingTarget: text fields yes, buttons and checkboxes no', () => {
+  const t = (tagName, type) => ({ tagName, type });
+  assert.equal(N.isTypingTarget(t('INPUT', 'text')), true);
+  assert.equal(N.isTypingTarget(t('INPUT', 'number')), true);
+  assert.equal(N.isTypingTarget(t('INPUT', undefined)), true);
+  assert.equal(N.isTypingTarget(t('TEXTAREA')), true);
+  assert.equal(N.isTypingTarget(t('SELECT')), true);
+  assert.equal(N.isTypingTarget(t('INPUT', 'checkbox')), false);
+  assert.equal(N.isTypingTarget(t('INPUT', 'range')), false);
+  assert.equal(N.isTypingTarget(t('BUTTON')), false);
+  assert.equal(N.isTypingTarget(t('DIV')), false);
+  assert.equal(N.isTypingTarget(null), false);
+  assert.equal(N.isTypingTarget({ tagName: 'DIV', isContentEditable: true }), true);
+});

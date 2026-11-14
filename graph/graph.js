@@ -12,6 +12,7 @@
 
   const SUBSTEPS = 4;
   const DT = 1 / 60 / SUBSTEPS;
+  const N = window.nmlq;
   const STORAGE_KEY = 'nmlq-settings-v2';
   const NOTE_NAMES = ['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'];
 
@@ -24,7 +25,7 @@
     { section: 'Sound', panel: 'sound' },
     { key: 'soundOn', label: 'Sound on', bool: true },
     { key: 'volume', label: 'Volume', min: 0, max: 100, step: 1, value: 60, unit: '%' },
-    { key: 'wave', label: 'Waveform', options: [['sine', 'Sine'], ['triangle', 'Triangle'], ['sawtooth', 'Sawtooth'], ['square', 'Square']], select: 'triangle' },
+    { key: 'wave', label: 'Waveform', options: N.WAVES, select: 'triangle' },
     { key: 'attack', label: 'Attack', min: 2, max: 1000, step: 1, value: 12, unit: 'ms' },
     { key: 'decay', label: 'Decay', min: 0.2, max: 10, step: 0.1, value: 4, unit: 's' },
     { key: 'brightness', label: 'Brightness', min: 0, max: 100, step: 1, value: 40, unit: '%' },
@@ -123,36 +124,13 @@
   const params = {};   // key -> number | boolean | string
   const enabled = {};  // key -> boolean (only for toggleable sliders)
 
-  function loadDefaults(panel) {
-    for (const d of PARAM_DEFS) {
-      if (!d.key || (panel && d.panelName !== panel)) continue;
-      if ('bool' in d) params[d.key] = d.bool;
-      else if ('options' in d) params[d.key] = d.select;
-      else {
-        params[d.key] = d.value;
-        if ('toggle' in d) enabled[d.key] = d.toggle;
-      }
-    }
-  }
-
-  function saveSettings() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ params, enabled })); } catch (e) { /* ignore */ }
-  }
+  // Reset every parameter, or just those of one panel ('sound' / 'physics').
+  const loadDefaults = (panel) => N.loadDefaults(PARAM_DEFS, params, enabled, panel ? (d) => d.panelName === panel : null);
+  const saveSettings = () => N.saveJSON(STORAGE_KEY, { params, enabled });
 
   function loadSettings() {
-    try {
-      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      if (!saved) return;
-      for (const d of PARAM_DEFS) {
-        if (!d.key) continue;
-        const v = saved.params && saved.params[d.key];
-        if (typeof v !== typeof params[d.key]) continue;
-        if (typeof v === 'number') params[d.key] = Math.min(d.max, Math.max(d.min, v));
-        else if (d.options) { if (d.options.some((o) => o[0] === v)) params[d.key] = v; }
-        else params[d.key] = v;
-        if (saved.enabled && d.key in enabled && d.key in saved.enabled) enabled[d.key] = !!saved.enabled[d.key];
-      }
-    } catch (e) { /* ignore */ }
+    const saved = N.loadJSON(STORAGE_KEY);
+    if (saved) N.restoreParams(PARAM_DEFS, params, saved.params, enabled, saved.enabled);
   }
 
   // Derived physics values
@@ -184,46 +162,24 @@
   };
 
   // ---------- audio ----------
+  // Shared building blocks: ring-out "pluck" voices -> low-pass filter ->
+  // reverb / echo -> master -> compressor.
 
-  const audio = {
-    ctx: null,
-    bus: null, filter: null, dry: null, wet: null, convolver: null,
-    delay: null, feedback: null, echoWet: null, master: null,
-    lfo: null, lfoGain: null,
-    voices: [],
-    reverbTimer: 0,
-  };
+  const audio = { ctx: null, bus: null, filter: null, space: null, master: null, lfo: null, lfoGain: null, pluck: null };
 
   function ensureAudio() {
     if (!audio.ctx) {
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) return null;
-      const ac = new AC();
+      const ac = N.audio.createContext();
+      if (!ac) return null;
       audio.ctx = ac;
       audio.bus = ac.createGain();
       audio.filter = ac.createBiquadFilter();
       audio.filter.type = 'lowpass';
       audio.filter.Q.value = 0.6;
-      audio.dry = ac.createGain();
-      audio.wet = ac.createGain();
-      audio.convolver = ac.createConvolver();
-      audio.delay = ac.createDelay(2);
-      audio.feedback = ac.createGain();
-      audio.echoWet = ac.createGain();
+      audio.space = N.audio.createSpace(ac, params.reverbSize);
       audio.master = ac.createGain();
-      const comp = ac.createDynamicsCompressor();
-      comp.threshold.value = -16;
-      comp.knee.value = 12;
-      comp.ratio.value = 4;
-
-      audio.bus.connect(audio.filter);
-      audio.filter.connect(audio.dry).connect(audio.master);
-      audio.filter.connect(audio.convolver).connect(audio.wet).connect(audio.master);
-      audio.filter.connect(audio.delay);
-      audio.delay.connect(audio.feedback).connect(audio.delay);
-      audio.delay.connect(audio.echoWet).connect(audio.master);
-      audio.echoWet.connect(audio.convolver);
-      audio.master.connect(comp).connect(ac.destination);
+      audio.bus.connect(audio.filter).connect(audio.space.input);
+      audio.space.output.connect(audio.master).connect(N.audio.compressor(ac, { threshold: -16, knee: 12, ratio: 4 })).connect(ac.destination);
 
       // Shared vibrato LFO, routed into each voice's detune.
       audio.lfo = ac.createOscillator();
@@ -232,86 +188,24 @@
       audio.lfo.connect(audio.lfoGain);
       audio.lfo.start();
 
-      buildImpulse();
+      audio.pluck = N.audio.createPluck(ac, { output: audio.bus, lfo: audio.lfoGain, maxVoices: 40 });
       applyAudioParams(true);
     }
-    // iOS can also report 'interrupted' (e.g. after a call or app switch).
-    if (audio.ctx.state !== 'running') audio.ctx.resume().catch(() => {});
-    return audio.ctx;
-  }
-
-  // ---------- iOS audio unlock ----------
-  // On iPhone (Safari and Chrome both use WebKit) Web Audio is muted by the
-  // ring/silent switch unless the page's audio session is "playback", and the
-  // context only starts inside certain gestures (touchend / click).
-  let iosUnlocked = false;
-  let silentEl = null;
-
-  function silentWavUrl() {
-    // 0.1 s of 8 kHz mono 8-bit silence.
-    const n = 800, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
-    const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
-    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE');
-    str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
-    str(36, 'data'); v.setUint32(40, n, true);
-    for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
-    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
-  }
-
-  function unlockAudio() {
-    if (!params.soundOn) return;
-    // Safari 16.4+: ignore the silent switch.
-    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
-    const ac = ensureAudio();
-    if (!ac) return;
-    if (!iosUnlocked) {
-      // Older iOS: playing an <audio> element switches the session to playback.
-      try {
-        if (!silentEl) {
-          silentEl = document.createElement('audio');
-          silentEl.setAttribute('playsinline', '');
-          silentEl.src = silentWavUrl();
-        }
-        const p = silentEl.play();
-        if (p && p.catch) p.catch(() => {});
-      } catch (e) { /* ignore */ }
-      // A one-sample buffer started inside the gesture fully unlocks the context.
-      try {
-        const src = ac.createBufferSource();
-        src.buffer = ac.createBuffer(1, 1, ac.sampleRate);
-        src.connect(ac.destination);
-        src.start(0);
-      } catch (e) { /* ignore */ }
-    }
-    if (ac.state === 'running') iosUnlocked = true;
-  }
-
-  // Reverb impulse: stereo noise with an exponential tail.
-  function buildImpulse() {
-    const ac = audio.ctx;
-    const len = Math.max(1, Math.floor(ac.sampleRate * params.reverbSize));
-    const buf = ac.createBuffer(2, len, ac.sampleRate);
-    for (let ch = 0; ch < 2; ch++) {
-      const data = buf.getChannelData(ch);
-      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-    }
-    audio.convolver.buffer = buf;
+    return N.audio.resume(audio.ctx);
   }
 
   function applyAudioParams(immediate) {
     if (!audio.ctx) return;
-    const t = audio.ctx.currentTime;
-    const set = (param, v) => (immediate ? param.setValueAtTime(v, t) : param.setTargetAtTime(v, t, 0.05));
-    const rev = on('reverb') ? params.reverb / 100 : 0;
-    const echo = on('echo') ? params.echo / 100 : 0;
+    const ac = audio.ctx;
+    const set = (param, v) => N.audio.setParam(ac, param, v, immediate, 0.05);
     set(audio.master.gain, params.soundOn ? (params.volume / 100) * 0.9 : 0);
     set(audio.filter.frequency, 250 * Math.pow(64, params.brightness / 100));
-    set(audio.dry.gain, 1 - rev * 0.45);
-    set(audio.wet.gain, rev * 1.2);
-    set(audio.echoWet.gain, echo * 0.8);
-    set(audio.delay.delayTime, params.echoTime / 1000);
-    set(audio.feedback.gain, params.echoFeedback / 100);
+    audio.space.set({
+      reverb: on('reverb') ? params.reverb / 100 : 0,
+      echo: on('echo') ? params.echo / 100 : 0,
+      echoTime: params.echoTime / 1000,
+      echoFeedback: params.echoFeedback / 100,
+    }, immediate);
     set(audio.lfoGain.gain, on('vibrato') ? params.vibrato : 0);
   }
 
@@ -333,54 +227,10 @@
   }
 
   function playFreq(freq, velocity, when) {
-    const ac = audio.ctx;
-    const t = Math.max(when || 0, ac.currentTime);
-    const atk = params.attack / 1000;
-    const dec = params.decay;
-    const end = t + atk + dec;
-    const peak = 0.16 * velocity;
-
-    const env = ac.createGain();
-    env.gain.setValueAtTime(0, t);
-    env.gain.linearRampToValueAtTime(peak, t + atk);
-    env.gain.exponentialRampToValueAtTime(0.0001, end);
-    env.connect(audio.bus);
-
-    const oscs = [];
-    const addOsc = (type, f, detune, level) => {
-      const o = ac.createOscillator();
-      o.type = type;
-      o.frequency.value = f;
-      o.detune.value = detune;
-      audio.lfoGain.connect(o.detune);
-      const g = ac.createGain();
-      g.gain.value = level;
-      o.connect(g).connect(env);
-      o.start(t);
-      o.stop(end + 0.05);
-      oscs.push(o);
-    };
-    addOsc(params.wave, freq, -params.detune / 2, 0.5);
-    addOsc(params.wave, freq, params.detune / 2, 0.5);
-    if (params.shimmer > 0) addOsc('sine', freq * 2, 0, (params.shimmer / 100) * 0.35);
-
-    const voice = { env, oscs, end };
-    oscs[0].onended = () => {
-      env.disconnect();
-      for (const o of oscs) { try { audio.lfoGain.disconnect(o.detune); } catch (e) { /* not connected */ } }
-      const idx = audio.voices.indexOf(voice);
-      if (idx >= 0) audio.voices.splice(idx, 1);
-    };
-    audio.voices.push(voice);
-
-    // Voice stealing: fade the oldest voices quickly if too many are sounding.
-    while (audio.voices.length > 40) {
-      const old = audio.voices.shift();
-      const now = ac.currentTime;
-      old.env.gain.cancelScheduledValues(now);
-      old.env.gain.setTargetAtTime(0, now, 0.03);
-      for (const o of old.oscs) { try { o.stop(now + 0.2); } catch (e) { /* already stopped */ } }
-    }
+    audio.pluck.play(freq, 0.16 * velocity, when, {
+      wave: params.wave, attack: params.attack / 1000, decay: params.decay,
+      detune: params.detune, shimmer: params.shimmer / 100,
+    });
   }
 
   const CHORDS = {
@@ -880,146 +730,32 @@
 
   // ---------- settings panels ----------
 
-  const rowRefs = {}; // key -> { input, checkbox, select, valueEl, row }
+  let controls = null; // { sync } from nmlq.ui.buildParamPanel
   const AUDIO_KEYS = new Set(['soundOn', 'volume', 'brightness', 'reverb', 'echo', 'echoTime', 'echoFeedback', 'vibrato']);
-
-  function formatValue(def, v) {
-    const decimals = def.step < 1 ? (String(def.step).split('.')[1] || '').length : 0;
-    return v.toFixed(decimals) + (def.unit || '');
-  }
 
   function onParamChanged(key) {
     if (key === 'nodeCount') build();
     else if (key === 'size') { computeRadius(); computeRestLengths(); }
     else if (AUDIO_KEYS.has(key)) applyAudioParams();
-    else if (key === 'reverbSize' && audio.ctx) {
-      clearTimeout(audio.reverbTimer);
-      audio.reverbTimer = setTimeout(buildImpulse, 200);
-    }
+    else if (key === 'reverbSize' && audio.ctx) audio.space.setLengthSoon(params.reverbSize);
     if (key === 'melody' && params.melody) ensureAudio();
     saveSettings();
   }
 
-  function buildControls() {
-    let container = null;
-    for (const def of PARAM_DEFS) {
-      if (def.section) {
-        container = document.getElementById('controls-' + def.panelName);
-        const h = document.createElement('div');
-        h.className = 'section-title';
-        h.textContent = def.section;
-        container.appendChild(h);
-        continue;
-      }
-
-      const row = document.createElement('div');
-      row.className = 'row';
-      const head = document.createElement('div');
-      head.className = 'row-head';
-      const label = document.createElement('label');
-      const text = document.createElement('span');
-      text.className = 'label-text';
-      text.textContent = def.label;
-      const ref = { row };
-
-      if ('bool' in def) {
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.addEventListener('change', () => { params[def.key] = cb.checked; onParamChanged(def.key); });
-        label.append(cb, text);
-        head.appendChild(label);
-        row.appendChild(head);
-        ref.checkbox = cb;
-      } else if ('options' in def) {
-        const sel = document.createElement('select');
-        sel.setAttribute('aria-label', def.label);
-        for (const [value, name] of def.options) {
-          const opt = document.createElement('option');
-          opt.value = value;
-          opt.textContent = name;
-          sel.appendChild(opt);
-        }
-        sel.addEventListener('change', () => { params[def.key] = sel.value; onParamChanged(def.key); });
-        label.appendChild(text);
-        head.append(label, sel);
-        row.appendChild(head);
-        ref.select = sel;
-      } else {
-        if ('toggle' in def) {
-          const cb = document.createElement('input');
-          cb.type = 'checkbox';
-          cb.title = 'Enable / disable';
-          cb.addEventListener('change', () => {
-            enabled[def.key] = cb.checked;
-            row.classList.toggle('disabled', !cb.checked);
-            onParamChanged(def.key);
-          });
-          label.appendChild(cb);
-          ref.checkbox = cb;
-        }
-        label.appendChild(text);
-        const valueEl = document.createElement('span');
-        valueEl.className = 'value';
-        head.append(label, valueEl);
-
-        const input = document.createElement('input');
-        input.type = 'range';
-        input.min = def.min;
-        input.max = def.max;
-        input.step = def.step;
-        input.setAttribute('aria-label', def.label);
-        input.addEventListener('input', () => {
-          params[def.key] = parseFloat(input.value);
-          valueEl.textContent = formatValue(def, params[def.key]);
-          onParamChanged(def.key);
-        });
-        row.append(head, input);
-        Object.assign(ref, { input, valueEl });
-      }
-
-      rowRefs[def.key] = ref;
-      container.appendChild(row);
-    }
-  }
-
-  function syncControls() {
-    for (const def of PARAM_DEFS) {
-      if (!def.key) continue;
-      const ref = rowRefs[def.key];
-      if ('bool' in def) {
-        ref.checkbox.checked = params[def.key];
-      } else if ('options' in def) {
-        ref.select.value = params[def.key];
-      } else {
-        ref.input.value = params[def.key];
-        ref.valueEl.textContent = formatValue(def, params[def.key]);
-        if (ref.checkbox) {
-          ref.checkbox.checked = enabled[def.key];
-          ref.row.classList.toggle('disabled', !enabled[def.key]);
-        }
-      }
-    }
-  }
-
   for (const btn of document.querySelectorAll('[data-collapse]')) {
-    const panel = document.getElementById(btn.dataset.collapse);
-    btn.addEventListener('click', () => {
-      const collapsed = panel.classList.toggle('collapsed');
-      btn.textContent = collapsed ? 'Show' : 'Hide';
-      btn.setAttribute('aria-expanded', String(!collapsed));
-    });
-    if (window.innerWidth <= 640) btn.click();
+    const setCollapsed = N.ui.collapsible(btn, document.getElementById(btn.dataset.collapse));
+    if (window.innerWidth <= 640) setCollapsed(true);
   }
 
   for (const btn of document.querySelectorAll('[data-defaults]')) {
     btn.addEventListener('click', () => {
       const oldCount = params.nodeCount, oldSize = params.size, oldRev = params.reverbSize;
       loadDefaults(btn.dataset.defaults);
-      syncControls();
+      controls.sync();
       if (params.nodeCount !== oldCount) build();
       else if (params.size !== oldSize) { computeRadius(); computeRestLengths(); }
       if (audio.ctx) {
-        if (params.reverbSize !== oldRev) buildImpulse();
+        if (params.reverbSize !== oldRev) audio.space.setLength(params.reverbSize);
         applyAudioParams();
       }
       saveSettings();
@@ -1054,17 +790,8 @@
     return { x: ev.clientX - r.left, y: ev.clientY - r.top };
   }
 
-  // Browsers only allow audio to start after a user gesture.
-  // iOS only honours some of these as unlock gestures, so listen to all of them.
-  for (const type of ['pointerdown', 'touchstart', 'touchend', 'click', 'keydown']) {
-    window.addEventListener(type, unlockAudio, { capture: true, passive: true });
-  }
-  // Coming back to the tab on iOS often leaves the context suspended/interrupted.
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && audio.ctx && audio.ctx.state !== 'running') {
-      audio.ctx.resume().catch(() => {});
-    }
-  });
+  // Start audio on the first gesture (with the iOS workarounds).
+  N.audio.installUnlock({ ensure: ensureAudio, current: () => audio.ctx, enabled: () => params.soundOn });
 
   canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
@@ -1150,8 +877,11 @@
 
   loadDefaults();
   loadSettings();
-  buildControls();
-  syncControls();
+  controls = N.ui.buildParamPanel({
+    defs: PARAM_DEFS, params, enabled,
+    container: (section) => document.getElementById('controls-' + section.panelName),
+    onChange: onParamChanged,
+  });
   resize();
   readColors();
 
