@@ -235,8 +235,56 @@
       buildImpulse();
       applyAudioParams(true);
     }
-    if (audio.ctx.state === 'suspended') audio.ctx.resume().catch(() => {});
+    // iOS can also report 'interrupted' (e.g. after a call or app switch).
+    if (audio.ctx.state !== 'running') audio.ctx.resume().catch(() => {});
     return audio.ctx;
+  }
+
+  // ---------- iOS audio unlock ----------
+  // On iPhone (Safari and Chrome both use WebKit) Web Audio is muted by the
+  // ring/silent switch unless the page's audio session is "playback", and the
+  // context only starts inside certain gestures (touchend / click).
+  let iosUnlocked = false;
+  let silentEl = null;
+
+  function silentWavUrl() {
+    // 0.1 s of 8 kHz mono 8-bit silence.
+    const n = 800, buf = new ArrayBuffer(44 + n), v = new DataView(buf);
+    const str = (o, s) => { for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i)); };
+    str(0, 'RIFF'); v.setUint32(4, 36 + n, true); str(8, 'WAVE');
+    str(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true);
+    str(36, 'data'); v.setUint32(40, n, true);
+    for (let i = 0; i < n; i++) v.setUint8(44 + i, 128);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+
+  function unlockAudio() {
+    if (!params.soundOn) return;
+    // Safari 16.4+: ignore the silent switch.
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
+    const ac = ensureAudio();
+    if (!ac) return;
+    if (!iosUnlocked) {
+      // Older iOS: playing an <audio> element switches the session to playback.
+      try {
+        if (!silentEl) {
+          silentEl = document.createElement('audio');
+          silentEl.setAttribute('playsinline', '');
+          silentEl.src = silentWavUrl();
+        }
+        const p = silentEl.play();
+        if (p && p.catch) p.catch(() => {});
+      } catch (e) { /* ignore */ }
+      // A one-sample buffer started inside the gesture fully unlocks the context.
+      try {
+        const src = ac.createBufferSource();
+        src.buffer = ac.createBuffer(1, 1, ac.sampleRate);
+        src.connect(ac.destination);
+        src.start(0);
+      } catch (e) { /* ignore */ }
+    }
+    if (ac.state === 'running') iosUnlocked = true;
   }
 
   // Reverb impulse: stereo noise with an exponential tail.
@@ -1007,7 +1055,16 @@
   }
 
   // Browsers only allow audio to start after a user gesture.
-  window.addEventListener('pointerdown', () => { if (params.soundOn) ensureAudio(); }, { capture: true });
+  // iOS only honours some of these as unlock gestures, so listen to all of them.
+  for (const type of ['pointerdown', 'touchstart', 'touchend', 'click', 'keydown']) {
+    window.addEventListener(type, unlockAudio, { capture: true, passive: true });
+  }
+  // Coming back to the tab on iOS often leaves the context suspended/interrupted.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && audio.ctx && audio.ctx.state !== 'running') {
+      audio.ctx.resume().catch(() => {});
+    }
+  });
 
   canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
