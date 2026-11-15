@@ -58,7 +58,7 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
 
   await t.test('landing page lists every app and uses the shared theme', () => withPage('index.html', async (page) => {
     const cards = await page.eval(`[...document.querySelectorAll('a.item')].map((a) => a.getAttribute('href'))`);
-    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/', 'granular/', 'memory/']);
+    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/', 'granular/', 'memory/', 'multiply/']);
     const accent = await page.eval(`getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()`);
     assert.match(accent, /^#[0-9a-f]{6}$/i);
   }));
@@ -491,8 +491,94 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
     assert.deepEqual(r.reset, ['maj7', 'C4Q,E4W,G4S,B4A', '2600', 'of 12']);
   }));
 
+  await t.test('multiply: pick a number, review flips, answers score, celebration, stars saved', () => withPage('multiply/index.html', async (page) => {
+    const r = await page.eval(`(async () => {
+      const out = {};
+      const $ = (id) => document.getElementById(id);
+      const until = async (fn, ms) => { const end = Date.now() + (ms || 4000); while (!fn()) { if (Date.now() > end) return false; await __t.wait(15); } return true; };
+      const tiles = () => [...document.querySelectorAll('#answer-grid .tile')];
+      const asked = () => Number(/× (\\d) =/.exec($('answer-prompt').textContent)[1]);
+
+      out.screen = document.body.dataset.screen;
+      out.digits = [...document.querySelectorAll('.digit')].map((d) => d.textContent).join('');
+      out.digitRows = getComputedStyle($('digits')).gridTemplateColumns.split(' ').length;
+      out.modesHidden = getComputedStyle($('go-review')).display === 'none' || getComputedStyle(document.querySelector('.seg')).display === 'none';
+
+      // Selection → review.
+      document.querySelector('.digit[data-n="7"]').click();
+      out.review = [document.body.dataset.screen, $('review-prompt').textContent,
+        [...document.querySelectorAll('#review-grid .tile .front')].map((f) => f.textContent).join(' ')];
+      const two = document.querySelectorAll('#review-grid .tile')[1];
+      two.click();
+      out.flip = [two.classList.contains('flipped'), $('review-prompt').textContent, two.querySelector('.back').textContent];
+      __t.press('Digit9', '9');
+      out.flip9 = [document.querySelectorAll('#review-grid .tile')[8].classList.contains('flipped'), two.classList.contains('flipped'), $('review-prompt').textContent];
+      out.flipBack = await until(() => !document.querySelector('#review-grid .flipped'), 3000) && $('review-prompt').textContent;
+
+      // Answer mode.
+      $('go-answer').click();
+      out.answer = [document.body.dataset.screen, $('go-answer').getAttribute('aria-pressed'),
+        tiles().map((t) => Number(t.textContent)).sort((a, b) => a - b).join(' ')];
+      out.prompt = /^7 × \\d = \\?$/.test($('answer-prompt').textContent);
+      // One wrong answer first.
+      let q = asked();
+      const wrong = tiles().find((t) => Number(t.textContent) !== 7 * q);
+      wrong.click();
+      out.wrong = [wrong.classList.contains('bad'), $('misses').textContent, $('score').textContent];
+      // Then answer everything (by clicks, and once by number key).
+      for (let i = 0; i < 9; i++) {
+        q = asked();
+        const idx = tiles().findIndex((t) => Number(t.textContent) === 7 * q);
+        if (i === 1) __t.press('Digit' + (idx + 1)); else tiles()[idx].click();
+        if (i === 0) out.right = [tiles()[idx].classList.contains('good'), $('answer-prompt').textContent === '7 × ' + q + ' = ' + 7 * q, $('score').textContent];
+        if (i < 8) await until(() => !tiles()[idx].classList.contains('good'));
+        if (i === 0) out.doneCard = tiles()[idx].classList.contains('done');
+      }
+      out.flashed = await until(() => document.querySelectorAll('#answer-grid .flash').length === 9);
+      out.result = await until(() => !$('result').hidden);
+      out.resultText = $('result-text').textContent;
+      out.stars = [$('result-stars').textContent.length, $('result-stars').querySelectorAll('.off').length];
+      out.dots = [...document.querySelectorAll('#progress span')].map((s) => s.className).join(',');
+      out.total = $('total').textContent;
+      out.saved = JSON.parse(localStorage.getItem('nmlq-multiply-v1')).stars;
+
+      // Back to the selection screen: the 7 shows its stars.
+      __t.press('Escape');
+      out.back = [document.body.dataset.screen, document.querySelector('.digit[data-n="7"] .stars').querySelectorAll('.off').length, document.querySelector('.digit[data-n="6"] .stars').textContent];
+      // Number keys pick on the selection screen; the sound screen opens.
+      __t.press('Digit0', '0');
+      out.zero = $('review-prompt').textContent;
+      $('show-sound').click();
+      out.sound = [$('sound').hidden, [...document.querySelectorAll('#sound .group-title')].map((g) => g.textContent).join(',')];
+      return out;
+    })()`);
+    assert.equal(r.screen, 'select');
+    assert.equal(r.digits, '0123456789');
+    assert.equal(r.digitRows, 5, 'two rows of five');
+    assert.equal(r.modesHidden, true, 'mode buttons wait for a number');
+    assert.deepEqual(r.review, ['review', '7 × ?', '1 2 3 4 5 6 7 8 9']);
+    assert.deepEqual(r.flip, [true, '7 × 2 = 14', '7 × 214']);
+    assert.deepEqual(r.flip9, [true, false, '7 × 9 = 63']);
+    assert.equal(r.flipBack, '7 × ?');
+    assert.deepEqual(r.answer, ['answer', 'true', '7 14 21 28 35 42 49 56 63']);
+    assert.equal(r.prompt, true);
+    assert.deepEqual(r.wrong, [true, '1', '0']);
+    assert.deepEqual(r.right, [true, true, '5']);
+    assert.equal(r.doneCard, true);
+    assert.equal(r.flashed, true, 'every card flashes green at the end');
+    assert.equal(r.result, true);
+    assert.equal(r.resultText, 'Great job! 135 points, 1 miss');
+    assert.deepEqual(r.stars, [3, 1], 'two of three stars lit');
+    assert.equal(r.dots, 'later,first,first,first,first,first,first,first,first');
+    assert.equal(r.total, '★ 135');
+    assert.deepEqual(r.saved, { 7: 2 });
+    assert.deepEqual(r.back, ['select', 1, ''], 'best stars on the 7, none on the 6');
+    assert.equal(r.zero, '0 × ?');
+    assert.deepEqual(r.sound, [false, 'Tone,Envelope,Output']);
+  }));
+
   await t.test('no page scrolls sideways at phone width', async () => {
-    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html', 'granular/index.html', 'memory/index.html']) {
+    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html', 'granular/index.html', 'memory/index.html', 'multiply/index.html']) {
       const page = await browser.newPage();
       try {
         await page.setViewport(390, 844);

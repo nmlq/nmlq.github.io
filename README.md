@@ -15,6 +15,7 @@ landing page (`index.html`) is a grid of cards, one per app.
 | [Synth](synth/) | `synth/` | A basic subtractive synthesizer with a 3–5 octave keyboard you play by touch (multi-touch) or with the computer keyboard; mono or poly, with filter, ADSR envelopes, LFO and portamento. |
 | [Granular](granular/) | `granular/` | A granular synthesizer: record a sound in the browser (or load a file), keep up to four in memory, and play it from a 3–5 octave keyboard as clouds of tiny grains, with a live display of the waveform and every grain. |
 | [Memory](memory/) | `memory/` | A memory game: four coloured pads in a circle, each with a note. Repeat the random sequence as it grows one step a round; finish it to win. Notes and sound are editable. |
+| [Multiply](multiply/) | `multiply/` | A times-table game for kids: pick a number 0–9, review its table on flip cards, then find each answer in a shuffled grid for points and stars. |
 
 All apps work with mouse, pen, touch and keyboard, follow the system's light
 or dark mode, and remember their settings in the browser (each has a
@@ -29,7 +30,7 @@ The apps are separate pages but share one sound vocabulary and one look:
 - **Waveforms** — sine, triangle, sawtooth and square everywhere.
 - **Envelopes** — linear attack, exponential decay; Synth adds full ADSR
   (attack, decay, sustain, release) for both its filter and amplifier.
-- **Synth voice** — Synth and Memory play the same shared subtractive
+- **Synth voice** — Synth, Memory and Multiply play the same shared subtractive
   voice (two oscillators, sub, noise, filter, two ADSRs, LFO).
 - **Tone** — Graph and Fifths use two detuned oscillators ("chorus"), an
   optional octave "shimmer", vibrato and a brightness (low-pass) control;
@@ -40,7 +41,7 @@ The apps are separate pages but share one sound vocabulary and one look:
   (mix, time, feedback) in Graph, Fifths and Synth, all ending in a gentle
   compressor.
 - **Controls** — Graph and Fifths use a slide-out settings panel; Drummer,
-  Synth, Granular and Memory use rotary knobs (drag up/down, scroll or arrow keys;
+  Synth, Granular, Memory and Multiply use rotary knobs (drag up/down, scroll or arrow keys;
   double-click resets).
 
 Settings that appear in more than one app use the same names and units.
@@ -60,6 +61,7 @@ drummer/              index.html, drummer.js
 synth/                index.html, synth.js
 granular/             index.html, granular.js
 memory/               index.html, memory.js
+multiply/             index.html, multiply.js
 tests/                unit, repository and headless-browser tests
 scripts/stamp.js      cache-busting ?v= stamps for the pages' script and style URLs
 favicon.ico           site icon
@@ -417,3 +419,33 @@ echo. **Defaults** restores every setting.
 Files: `memory/index.html` (page, board and styles) and `memory/memory.js`
 (game, pads, settings), using the shared synth voice
 (`nmlq.audio.createSynth`).
+
+## Multiply
+
+A times-table game for kids. The first screen asks for a number: pick one
+of the ten coloured buttons (0–9, two rows of five) or press a number key.
+That number's table is then played in two modes; switch with **Review** /
+**Answer** at the top, or go back with **Numbers** (or `Esc`).
+
+- **Review** — `7 × ?` above a 3 × 3 grid of cards 1–9. Tap a card (or
+  press `1`–`9`) and it flips over for a moment to show the answer
+  (`7 × 2 = 14`), with a note that climbs as the cards go up.
+- **Answer** — the grid holds all nine answers (7, 14 … 63) in random
+  places, and the game asks `7 × 1 = ?` … `7 × 9 = ?` in random order. Tap
+  the answer: right turns the card green with a high beep, wrong turns it
+  red with a low beep (try again). After all nine, every card flashes green
+  with three beeps.
+
+Points: 10 for a first-try answer, plus 2 for each answer in the current
+streak (up to +10), and 5 when it took more than one try. A row of dots
+shows the progress (green = first try, gold = got there). A finished round
+earns stars — three with no misses, two with one or two, otherwise one —
+and the best stars for each number show on the first screen. The ★ total
+at the top adds up every point ever scored. **Sound** opens a few of the
+shared synth voice settings (waves, filter, envelope, volume, reverb);
+**Sound defaults** restores them. Stars, points and sound are saved in the
+browser.
+
+Files: `multiply/index.html` (screens and styles) and `multiply/multiply.js`
+(game rules, screens, sound), using the shared synth voice. The game rules
+are pure functions, unit-tested in `tests/multiply.test.js`.

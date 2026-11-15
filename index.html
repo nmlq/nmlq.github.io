@@ -70,6 +70,10 @@
     .thumb .quad { fill: none; stroke: var(--muted); stroke-width: 1.2; }
     .thumb .quad.on { fill: var(--accent); stroke: var(--accent); }
     .thumb .hub { fill: var(--card); stroke: var(--fg); stroke-width: 1.2; }
+    .thumb .tiles rect { fill: none; stroke: var(--muted); stroke-width: 1.1; }
+    .thumb .tiles rect.on { fill: var(--accent); stroke: var(--accent); }
+    .thumb .tile-text { fill: var(--fg); font: 600 12px system-ui, sans-serif; text-anchor: middle; }
+    .thumb .tile-text.on { fill: var(--card); }
     .thumb .chord-shape { fill: var(--accent); fill-opacity: 0.12; stroke-width: 1.2; opacity: 0.9; }
     .label {
       padding: 10px 14px 14px;
@@ -264,6 +268,37 @@
         <div class="label">
           <strong>Memory</strong>
           <span>Repeat the sequence of four coloured notes</span>
+        </div>
+      </a>
+
+      <a class="item" href="multiply/">
+        <div class="thumb">
+          <svg viewBox="0 0 100 100" aria-hidden="true" class="no-spin">
+            <g class="tiles">
+              <rect x="10" y="10" width="24" height="24" rx="4"/>
+              <rect x="38" y="10" width="24" height="24" rx="4"/>
+              <rect x="66" y="10" width="24" height="24" rx="4"/>
+              <rect x="10" y="38" width="24" height="24" rx="4"/>
+              <rect class="on" x="38" y="38" width="24" height="24" rx="4"/>
+              <rect x="66" y="38" width="24" height="24" rx="4"/>
+              <rect x="10" y="66" width="24" height="24" rx="4"/>
+              <rect x="38" y="66" width="24" height="24" rx="4"/>
+              <rect x="66" y="66" width="24" height="24" rx="4"/>
+            </g>
+            <text class="tile-text" x="22" y="26">42</text>
+            <text class="tile-text" x="50" y="26">35</text>
+            <text class="tile-text" x="78" y="26">7</text>
+            <text class="tile-text" x="22" y="54">28</text>
+            <text class="tile-text on" x="50" y="54">49</text>
+            <text class="tile-text" x="78" y="54">56</text>
+            <text class="tile-text" x="22" y="82">63</text>
+            <text class="tile-text" x="50" y="82">14</text>
+            <text class="tile-text" x="78" y="82">21</text>
+          </svg>
+        </div>
+        <div class="label">
+          <strong>Multiply</strong>
+          <span>Learn the times tables: review, then test yourself</span>
         </div>
       </a>
 

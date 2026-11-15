@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="../shared/favicon.svg?v=9e1065bfcf" type="image/svg+xml">
+  <title>Multiply · nmlq</title>
+  <link rel="stylesheet" href="../shared/nmlq.css?v=b9bbea25f2">
+  <style>
+    :root { --tile-dim: 0.16; --good-hue: 140; --bad-hue: 0; --gold-hue: 45; }
+    @media (prefers-color-scheme: light) {
+      :root { --tile-dim: 0.18; }
+    }
+    main {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 16px 16px 48px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* ----- top bar ----- */
+    .top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+    .top h1 { font-size: 15px; margin: 0; font-weight: 650; }
+    .top .spacer { flex: 1; }
+    .seg { display: inline-flex; }
+    .seg button { border-radius: 0; }
+    .seg button:first-child { border-radius: 6px 0 0 6px; }
+    .seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+    body[data-screen="select"] .when-picked { display: none; }
+    .points { font-variant-numeric: tabular-nums; font-weight: 600; }
+
+    /* ----- screens ----- */
+    .screen { display: flex; flex-direction: column; align-items: center; gap: 18px; padding: 24px 12px; }
+    .screen[hidden] { display: none; }
+    .prompt {
+      font-size: clamp(34px, 9vw, 56px);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.02em;
+      line-height: 1.1;
+      text-align: center;
+      min-height: 1.1em;
+    }
+    .prompt .q { color: var(--accent); }
+    .sub { color: var(--muted); text-align: center; }
+
+    /* selection: two rows of five */
+    .digits {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      width: min(520px, 100%);
+    }
+    .digit {
+      aspect-ratio: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      border-radius: 14px;
+      font-size: clamp(28px, 8vw, 44px);
+      font-weight: 700;
+      background: hsla(var(--hue), 75%, var(--lit-l), var(--tile-dim));
+      border-color: hsla(var(--hue), 75%, var(--lit-l), 0.5);
+      padding: 0;
+    }
+    .digit:hover { background: hsla(var(--hue), 75%, var(--lit-l), 0.32); color: var(--fg); border-color: hsl(var(--hue), 75%, var(--lit-l)); }
+    .digit .stars { font-size: 12px; letter-spacing: 1px; line-height: 1; min-height: 1em; color: hsl(var(--gold-hue), 90%, var(--lit-l)); }
+    .digit .stars .off { color: var(--cell-alt); }
+
+    /* 3 × 3 tiles */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      width: min(420px, 100%);
+      perspective: 900px;
+    }
+    .tile {
+      position: relative;
+      aspect-ratio: 1;
+      padding: 0;
+      border: none;
+      background: none;
+      border-radius: 14px;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tile .inner {
+      position: absolute;
+      inset: 0;
+      transform-style: preserve-3d;
+      transition: transform 0.45s ease;
+    }
+    .tile.flipped .inner { transform: rotateY(180deg); }
+    .tile .face {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border-radius: 14px;
+      border: 1px solid hsla(var(--hue), 70%, var(--lit-l), 0.45);
+      background: hsla(var(--hue), 70%, var(--lit-l), var(--tile-dim));
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      font-size: clamp(28px, 8vw, 42px);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+    .tile .back { transform: rotateY(180deg); background: hsla(var(--hue), 75%, var(--lit-l), 0.38); border-color: hsl(var(--hue), 75%, var(--lit-l)); }
+    .tile .back small { font-size: 13px; font-weight: 500; color: var(--muted); }
+    .tile:hover .front { border-color: hsl(var(--hue), 70%, var(--lit-l)); }
+    .tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+    .tile.good .front, .tile.flash .front {
+      --hue: var(--good-hue);
+      background: hsl(var(--hue), 65%, var(--lit-l));
+      border-color: hsl(var(--hue), 65%, var(--lit-l));
+      box-shadow: 0 0 22px hsla(var(--hue), 80%, 55%, 0.6);
+      color: var(--bg);
+    }
+    .tile.bad .front {
+      --hue: var(--bad-hue);
+      background: hsl(var(--hue), 75%, var(--lit-l));
+      border-color: hsl(var(--hue), 75%, var(--lit-l));
+      color: var(--bg);
+      animation: shake 0.35s;
+    }
+    .tile.done:not(.good):not(.flash) .front {
+      --hue: var(--good-hue);
+      background: hsla(var(--hue), 60%, var(--lit-l), 0.12);
+      border-style: dashed;
+      color: var(--muted);
+    }
+    @keyframes shake {
+      20%, 60% { transform: translateX(-5px); }
+      40%, 80% { transform: translateX(5px); }
+    }
+
+    /* progress: one dot per question */
+    .progress { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+    .progress span {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 11px; font-weight: 600;
+      background: var(--cell); border: 1px solid var(--border); color: var(--muted);
+    }
+    .progress .now { border-color: var(--accent); color: var(--accent); }
+    .progress .first { background: hsl(var(--good-hue), 60%, var(--lit-l)); border-color: transparent; color: var(--bg); }
+    .progress .later { background: hsl(var(--gold-hue), 85%, var(--lit-l)); border-color: transparent; color: var(--bg); }
+    .stats { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .stats b { color: var(--fg); }
+
+    .result {
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+      padding: 14px 18px; border-radius: 12px;
+      border: 1px solid hsl(var(--good-hue), 60%, var(--lit-l));
+      background: hsla(var(--good-hue), 60%, var(--lit-l), 0.1);
+      text-align: center;
+    }
+    .result[hidden] { display: none; }
+    .result .big-stars { font-size: 32px; letter-spacing: 4px; color: hsl(var(--gold-hue), 90%, var(--lit-l)); }
+    .result .big-stars .off { color: var(--cell-alt); }
+    .result strong { font-size: 18px; }
+    .big { padding: 8px 18px; font-size: 15px; font-weight: 600; }
+
+    #sound[hidden] { display: none; }
+    .sound-foot { margin-top: 10px; }
+
+    @media (max-width: 640px) {
+      main { padding: 8px 8px 32px; gap: 8px; }
+      .top .hint { display: none; }
+      .digits, .grid { gap: 8px; }
+      .screen { padding: 16px 4px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .tile .inner, .tile .face { transition: none; }
+      .tile.bad .front { animation: none; }
+    }
+  </style>
+</head>
+<body data-screen="select">
+  <main>
+    <section class="card top" aria-label="Multiply controls">
+      <a class="btn" href="../" aria-label="Back to all items">←</a>
+      <h1>Multiply</h1>
+      <button id="go-select" class="when-picked" title="Pick another number (Esc)">Numbers</button>
+      <div class="seg when-picked" role="group" aria-label="Mode">
+        <button id="go-review" aria-pressed="false">Review</button>
+        <button id="go-answer" aria-pressed="false">Answer</button>
+      </div>
+      <span class="spacer"></span>
+      <span class="points" id="total" title="All your points so far">★ 0</span>
+      <button id="show-sound" aria-pressed="false" aria-controls="sound">Sound</button>
+      <span class="hint">Keys 0–9 / 1–9 · Esc numbers</span>
+    </section>
+
+    <section class="card screen" id="select-screen" aria-label="Pick a number">
+      <div class="prompt">×</div>
+      <div class="sub">Pick a times table</div>
+      <div class="digits" id="digits"></div>
+    </section>
+
+    <section class="card screen" id="review-screen" aria-label="Review" hidden>
+      <div class="prompt" id="review-prompt" aria-live="polite"></div>
+      <div class="sub">Tap a card to see the answer</div>
+      <div class="grid" id="review-grid"></div>
+      <button class="big" id="review-to-answer">I'm ready! Test me →</button>
+    </section>
+
+    <section class="card screen" id="answer-screen" aria-label="Answer" hidden>
+      <div class="prompt" id="answer-prompt" aria-live="polite"></div>
+      <div class="progress" id="progress" aria-hidden="true"></div>
+      <div class="grid" id="answer-grid"></div>
+      <div class="stats">
+        <span>Points <b id="score">0</b></span>
+        <span>Streak <b id="streak">0</b></span>
+        <span>Misses <b id="misses">0</b></span>
+      </div>
+      <div class="result" id="result" hidden>
+        <div class="big-stars" id="result-stars"></div>
+        <strong id="result-text"></strong>
+        <div class="buttons">
+          <button class="big" id="again">Play again</button>
+          <button class="big" id="result-review">Review</button>
+          <button class="big" id="result-select">New number</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" id="sound" aria-label="Sound settings" hidden>
+      <div class="groups" id="sound-groups"></div>
+      <div class="buttons sound-foot"><button id="defaults">Sound defaults</button></div>
+    </section>
+  </main>
+
+  <script src="../shared/core.js?v=f2299644e6"></script>
+  <script src="../shared/audio.js?v=6d8201b6e6"></script>
+  <script src="../shared/ui.js?v=a53f48852a"></script>
+  <script src="multiply.js?v=196b59d791"></script>
+</body>
+</html>
