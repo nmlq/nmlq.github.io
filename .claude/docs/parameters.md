@@ -17,7 +17,7 @@ Every app describes its settings as data and builds the UI from it.
 Values live in `params[key]`, on/off state in `enabled[key]`
 (`on(k) = enabled[k] !== false`).
 
-**Knob style (Drummer, Synth, Granular, Memory)** — `GROUPS = [{ title, params: [...] }]`,
+**Knob style (Drummer, Synth, Granular, Memory, Multiply)** — `GROUPS = [{ title, params: [...] }]`,
 each param `{ key, label, min, max, step?, log?, value, format }` (knob) or
 `{ key, label, options, value }` (drop-down). Flatten with
 `GROUPS.flatMap(g => g.params)`.
@@ -95,6 +95,10 @@ Use these names, labels, units and ranges when an app has the concept.
   and one note per pad (`pad0`–`pad3`, MIDI 36–96); the shared synth voice
   groups with softer defaults; output (volume, reverb, echo). The best
   score is saved with the settings.
+- **Multiply** — a subset of the shared synth voice (osc 1 / osc 2 wave,
+  osc 2 level, cutoff, resonance, amp ADSR) with beep-like defaults, plus
+  volume and reverb; progress (best stars per table, total points) is saved
+  with them.
 - **Synth** — osc 2 semitones, sub level, key tracking, filter env amount
   (±), filter ADSR, LFO rate / filter / tremolo, portamento + glide mode,
   mono envelopes (legato / retrigger), poly voices, bend range; plus layout
