@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="../shared/favicon.svg?v=9e1065bfcf" type="image/svg+xml">
-  <title>Multiply · nmlq</title>
+  <title>Operators · nmlq</title>
   <link rel="stylesheet" href="../shared/nmlq.css?v=b9bbea25f2">
   <style>
     :root { --tile-dim: 0.16; --good-hue: 140; --bad-hue: 0; --gold-hue: 45; }
@@ -70,6 +70,26 @@
     .digit:hover { background: hsla(var(--hue), 75%, var(--lit-l), 0.32); color: var(--fg); border-color: hsl(var(--hue), 75%, var(--lit-l)); }
     .digit .stars { font-size: 12px; letter-spacing: 1px; line-height: 1; min-height: 1em; color: hsl(var(--gold-hue), 90%, var(--lit-l)); }
     .digit .stars .off { color: var(--cell-alt); }
+
+    /* operator choice: one row of four */
+    .ops {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      width: min(520px, 100%);
+    }
+    .op { padding: 8px 0; border-radius: 12px; font-size: clamp(26px, 7vw, 36px); font-weight: 700; line-height: 1.1; }
+
+    /* fractions, stacked: numerator over a line over denominator */
+    .frac {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      vertical-align: middle;
+      font-size: 0.62em;
+      line-height: 1.05;
+    }
+    .frac > span + span { border-top: 0.09em solid currentColor; padding: 0 0.15em; }
 
     /* 3 × 3 tiles */
     .grid {
@@ -175,7 +195,7 @@
     @media (max-width: 640px) {
       main { padding: 8px 8px 32px; gap: 8px; }
       .top .hint { display: none; }
-      .digits, .grid { gap: 8px; }
+      .digits, .ops, .grid { gap: 8px; }
       .screen { padding: 16px 4px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -186,9 +206,9 @@
 </head>
 <body data-screen="select">
   <main>
-    <section class="card top" aria-label="Multiply controls">
+    <section class="card top" aria-label="Operators controls">
       <a class="btn" href="../" aria-label="Back to all items">←</a>
-      <h1>Multiply</h1>
+      <h1>Operators</h1>
       <button id="go-select" class="when-picked" title="Pick another number (Esc)">Numbers</button>
       <div class="seg when-picked" role="group" aria-label="Mode">
         <button id="go-review" aria-pressed="false">Review</button>
@@ -197,12 +217,13 @@
       <span class="spacer"></span>
       <span class="points" id="total" title="All your points so far">★ 0</span>
       <button id="show-sound" aria-pressed="false" aria-controls="sound">Sound</button>
-      <span class="hint">Keys 0–9 / 1–9 · Esc numbers</span>
+      <span class="hint">Keys + − × ÷ · 0–9 / 1–9 · Esc numbers</span>
     </section>
 
     <section class="card screen" id="select-screen" aria-label="Pick a number">
-      <div class="prompt">×</div>
-      <div class="sub">Pick a times table</div>
+      <div class="prompt" id="select-prompt">×</div>
+      <div class="ops" id="ops" role="group" aria-label="Operator"></div>
+      <div class="sub">Pick an operator, then a number</div>
       <div class="digits" id="digits"></div>
     </section>
 
@@ -242,6 +263,6 @@
   <script src="../shared/core.js?v=f2299644e6"></script>
   <script src="../shared/audio.js?v=6d8201b6e6"></script>
   <script src="../shared/ui.js?v=a53f48852a"></script>
-  <script src="multiply.js?v=196b59d791"></script>
+  <script src="operators.js?v=05da69f5fe"></script>
 </body>
 </html>
