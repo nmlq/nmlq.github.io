@@ -58,7 +58,7 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
 
   await t.test('landing page lists every app and uses the shared theme', () => withPage('index.html', async (page) => {
     const cards = await page.eval(`[...document.querySelectorAll('a.item')].map((a) => a.getAttribute('href'))`);
-    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/', 'granular/', 'memory/', 'multiply/']);
+    assert.deepEqual(cards, ['graph/', 'fifths/', 'drummer/', 'synth/', 'granular/', 'memory/', 'operators/']);
     const accent = await page.eval(`getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()`);
     assert.match(accent, /^#[0-9a-f]{6}$/i);
   }));
@@ -491,7 +491,7 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
     assert.deepEqual(r.reset, ['maj7', 'C4Q,E4W,G4S,B4A', '2600', 'of 12']);
   }));
 
-  await t.test('multiply: pick a number, review flips, answers score, celebration, stars saved', () => withPage('multiply/index.html', async (page) => {
+  await t.test('operators: pick operator and number, review flips, answers score, celebration, stars saved, fractions', () => withPage('operators/index.html', async (page) => {
     const r = await page.eval(`(async () => {
       const out = {};
       const $ = (id) => document.getElementById(id);
@@ -500,6 +500,8 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
       const asked = () => Number(/× (\\d) =/.exec($('answer-prompt').textContent)[1]);
 
       out.screen = document.body.dataset.screen;
+      out.ops = [[...document.querySelectorAll('.op')].map((b) => b.textContent).join(''),
+        document.querySelector('.op[aria-pressed="true"]').dataset.op, $('select-prompt').textContent];
       out.digits = [...document.querySelectorAll('.digit')].map((d) => d.textContent).join('');
       out.digitRows = getComputedStyle($('digits')).gridTemplateColumns.split(' ').length;
       out.modesHidden = getComputedStyle($('go-review')).display === 'none' || getComputedStyle(document.querySelector('.seg')).display === 'none';
@@ -518,17 +520,17 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
       // Answer mode.
       $('go-answer').click();
       out.answer = [document.body.dataset.screen, $('go-answer').getAttribute('aria-pressed'),
-        tiles().map((t) => Number(t.textContent)).sort((a, b) => a - b).join(' ')];
+        tiles().map((t) => Number(t.dataset.value)).sort((a, b) => a - b).join(' ')];
       out.prompt = /^7 × \\d = \\?$/.test($('answer-prompt').textContent);
       // One wrong answer first.
       let q = asked();
-      const wrong = tiles().find((t) => Number(t.textContent) !== 7 * q);
+      const wrong = tiles().find((t) => Number(t.dataset.value) !== 7 * q);
       wrong.click();
       out.wrong = [wrong.classList.contains('bad'), $('misses').textContent, $('score').textContent];
       // Then answer everything (by clicks, and once by number key).
       for (let i = 0; i < 9; i++) {
         q = asked();
-        const idx = tiles().findIndex((t) => Number(t.textContent) === 7 * q);
+        const idx = tiles().findIndex((t) => Number(t.dataset.value) === 7 * q);
         if (i === 1) __t.press('Digit' + (idx + 1)); else tiles()[idx].click();
         if (i === 0) out.right = [tiles()[idx].classList.contains('good'), $('answer-prompt').textContent === '7 × ' + q + ' = ' + 7 * q, $('score').textContent];
         if (i < 8) await until(() => !tiles()[idx].classList.contains('good'));
@@ -540,7 +542,8 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
       out.stars = [$('result-stars').textContent.length, $('result-stars').querySelectorAll('.off').length];
       out.dots = [...document.querySelectorAll('#progress span')].map((s) => s.className).join(',');
       out.total = $('total').textContent;
-      out.saved = JSON.parse(localStorage.getItem('nmlq-multiply-v1')).stars;
+      const saved = JSON.parse(localStorage.getItem('nmlq-operators-v1'));
+      out.saved = [saved.op, saved.stars];
 
       // Back to the selection screen: the 7 shows its stars.
       __t.press('Escape');
@@ -548,11 +551,29 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
       // Number keys pick on the selection screen; the sound screen opens.
       __t.press('Digit0', '0');
       out.zero = $('review-prompt').textContent;
+
+      // Division: pick ÷ (by key), then 7. Answers are fractions, not decimals.
+      __t.press('Escape');
+      __t.press('Slash', '/');
+      out.divSelect = [$('select-prompt').textContent, document.querySelector('.op[aria-pressed="true"]').dataset.op,
+        document.querySelector('.digit[data-n="7"] .stars').textContent];
+      document.querySelector('.digit[data-n="7"]').click();
+      out.divReview = $('review-prompt').textContent;
+      document.querySelectorAll('#review-grid .tile')[1].click();
+      out.divFlip = [$('review-prompt').querySelectorAll('.frac span').length, $('review-prompt').textContent,
+        document.querySelectorAll('#review-grid .tile')[1].dataset.value];
+      $('go-answer').click();
+      out.divCards = tiles().map((t) => t.dataset.value).sort().join(' ');
+      out.divPrompt = $('answer-prompt').textContent;
+      out.noDecimals = !$('answer-grid').textContent.includes('.');
+      // The operator is remembered.
+      out.savedOp = JSON.parse(localStorage.getItem('nmlq-operators-v1')).op;
       $('show-sound').click();
       out.sound = [$('sound').hidden, [...document.querySelectorAll('#sound .group-title')].map((g) => g.textContent).join(',')];
       return out;
     })()`);
     assert.equal(r.screen, 'select');
+    assert.deepEqual(r.ops, ['+−×÷', 'mul', '×'], 'four operators, × by default');
     assert.equal(r.digits, '0123456789');
     assert.equal(r.digitRows, 5, 'two rows of five');
     assert.equal(r.modesHidden, true, 'mode buttons wait for a number');
@@ -571,14 +592,21 @@ test('browser', { skip: !chromePath && !required && 'Chrome not found (set CHROM
     assert.deepEqual(r.stars, [3, 1], 'two of three stars lit');
     assert.equal(r.dots, 'later,first,first,first,first,first,first,first,first');
     assert.equal(r.total, '★ 135');
-    assert.deepEqual(r.saved, { 7: 2 });
+    assert.deepEqual(r.saved, ['mul', { add: {}, sub: {}, mul: { 7: 2 }, div: {} }]);
     assert.deepEqual(r.back, ['select', 1, ''], 'best stars on the 7, none on the 6');
     assert.equal(r.zero, '0 × ?');
+    assert.deepEqual(r.divSelect, ['÷', 'div', ''], 'stars are per operator');
+    assert.equal(r.divReview, '7 ÷ ?');
+    assert.deepEqual(r.divFlip, [2, '7 ÷ 2 = 72', '7/2'], 'stacked 7 over 2');
+    assert.equal(r.divCards, '1 7 7/2 7/3 7/4 7/5 7/6 7/8 7/9');
+    assert.match(r.divPrompt, /^7 ÷ \d = \?$/);
+    assert.equal(r.noDecimals, true);
+    assert.equal(r.savedOp, 'div');
     assert.deepEqual(r.sound, [false, 'Tone,Envelope,Output']);
   }));
 
   await t.test('no page scrolls sideways at phone width', async () => {
-    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html', 'granular/index.html', 'memory/index.html', 'multiply/index.html']) {
+    for (const file of ['index.html', 'graph/index.html', 'fifths/index.html', 'drummer/index.html', 'synth/index.html', 'granular/index.html', 'memory/index.html', 'operators/index.html']) {
       const page = await browser.newPage();
       try {
         await page.setViewport(390, 844);

@@ -27,7 +27,7 @@ favicon.ico           site icon (shared/favicon.svg for modern browsers)
 .claude/              this guide and the reference docs below
 ```
 
-Current apps: `graph/`, `fifths/`, `drummer/`, `synth/`, `granular/`, `memory/`, `multiply/`.
+Current apps: `graph/`, `fifths/`, `drummer/`, `synth/`, `granular/`, `memory/`, `operators/`.
 
 ## Reference docs (read before changing or adding an app)
 
